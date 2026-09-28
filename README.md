@@ -186,5 +186,5 @@ AGPL-3.0
 
 ## Política de Privacidade
 
-Confira nossa Declaração de Não Coleta de Dadosm em confomidade com a Lei nº 13.709/2018 (LGPD) e com as melhores práticas de segurança da informação: [Política de Privacidade](./PRIVACY_POLICY.md)
+O SEI Pro não coleta dados para o desenvolvedor. A [Política de Privacidade](./PRIVACY_POLICY.md), em conformidade com a Lei nº 13.709/2018 (LGPD), explica o que fica guardado no navegador e o que cada função opcional envia, para quem e em que condições.
 

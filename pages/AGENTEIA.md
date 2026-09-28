@@ -47,7 +47,7 @@ O agente vive num **painel lateral**, ao lado do SEI: você continua vendo o pro
 2. Escolha o **modelo**;
 3. Clique em **Salvar e começar**.
 
-A chave fica guardada **só neste navegador**. O SEI Pro não tem servidor: as mensagens vão do seu navegador direto para o serviço escolhido, e o SEI Pro não as vê.
+A chave fica guardada **só neste navegador**. As mensagens vão do seu navegador direto para o serviço escolhido, sem passar por nenhum servidor do SEI Pro, e o SEI Pro não as vê. O que é enviado e as proteções aplicadas estão na [Política de Privacidade](../PRIVACY_POLICY.md#42-agente-de-ia).
 
 #### Qual serviço de IA
 
@@ -210,7 +210,7 @@ Fica guardada **só a transcrição** — o que apareceu na tela. O histórico e
 
 ### Quanto custa
 
-O SEI Pro é gratuito e não cobra nada pelo agente. O custo é o do serviço de IA que você escolher, cobrado diretamente por ele. O painel mostra, no topo, quanto a conversa em curso consumiu — **em reais**, convertidos pela cotação do dia do dólar (PTAX do Banco Central; passando o mouse, aparece o valor original e a cotação usada). Nas configurações dá para desligar a conversão e ver em dólares. Quando o serviço não informa custo, o painel mostra tokens.
+O SEI Pro é gratuito e não cobra nada pelo agente. O custo é o do serviço de IA que você escolher, cobrado diretamente por ele. O painel mostra, no topo, quanto a conversa em curso consumiu — **em reais**, convertidos pela cotação do dia do dólar (PTAX do Banco Central, com a AwesomeAPI como reserva; passando o mouse, aparece o valor original e a cotação usada). Nas configurações dá para desligar a conversão e ver em dólares. Quando o serviço não informa custo, o painel mostra tokens.
 
 Uma consulta simples costuma custar centavos de dólar. Ler documentos longos custa mais, porque o texto inteiro vai para o modelo.
 
