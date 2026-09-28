@@ -2,6 +2,14 @@
 
 ## ![SEI Pro Histórico de Versões](../img/icon-historico.png) Histórico de versões
 
+### Versão 2.2.3
+28/09/2026
+
+Correção para quem usa os modelos **Gemini 3** no Agente de IA.
+
+- **O agente parava com erro 400 na segunda consulta ao SEI.** Quem configurou o Gemini direto (chave do Google AI Studio) e escolheu um modelo da família 3 via a conversa morrer com uma mensagem sobre `thought_signature`: o agente consultava o SEI uma vez e, ao retomar, o Google recusava o pedido — a resposta nunca chegava. A causa: os modelos 3 devolvem, junto com o pedido de ferramenta, uma marca interna de raciocínio que precisa voltar no pedido seguinte, e a extensão a descartava ao remontar a conversa. Agora ela é preservada. Quem usa o Gemini **pelo OpenRouter**, ou um modelo 2.5, nunca foi atingido — o que explica o problema ter aparecido só agora. Relato de *rudnypc* e diagnóstico de *dalcib* ([#169](https://github.com/SEI-Pro/sei-pro/issues/169))
+- De passagem: ao trocar de provedor no meio de uma conversa já iniciada, essa marca do Gemini é removida do histórico antes de enviar — serviço que não a conhece recusa o pedido inteiro
+
 ### Versão 2.2.2
 25/09/2026
 
