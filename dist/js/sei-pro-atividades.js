@@ -26470,51 +26470,49 @@ function initPerfilLoginAtiv(TimeOut = 9000) {
     }
 }
 
+// Orgaos com servidor proprio do modulo de atividades. A lista era consultada em seipro.io/servers
+// a cada carga de pagina; agora fica no codigo e nenhuma requisicao sai para descobrir o servidor.
+var serversAtivPro = [
+    { domain: 'sei.antt.gov.br', remote_host: 'https://anttpro.srvs.antt.gov.br/', login_default: 'key', enabled: true }
+];
 // Verifica dominios permitidos
 function getServersPro() {
-    $.ajax({
-        url: 'https://seipro.io/servers/',
-        type: 'GET',
-        dataType: 'json',
-        success: function(result) {
-            var host = jmespath.search(result, "[?domain=='"+window.location.host+"'] | [0]");
-                host = (host !== null && host.enabled) ? host : false;
-            if (host) {
-                if (host.login_default == 'key') {
-                    urlServerAtiv = host.remote_host;
-                    arrayConfigAtividades = false;
-                    arrayConfigAtivUnidade = false;
-                    removeLocalDataAtiv();
-                    removeOptionsPro('perfilAtividadesSelected');
-                    removeOptionsPro('panelAtividadesView');
-                    removeOptionsPro('panelAfastamentosView');
-                    initEmptyAtividades();
-                    $('.panelHome').find('.iconAtividade_update i').removeClass('fa-spin');
-                    $('.atividadesBtnPanel button[data-value="Tabela"]').trigger('click');
-                    $('#tabelaAtivPanel').attr('class','').css('text-align','center').html('<a class="newLink" onclick="getResendKey(this)" style="transform: scale(1.4);margin: 10px 0;"><i class="fas fa-key laranjaColor"></i> Solicitar chave de acesso</a>');
-                } 
-                /* else {
-                    var hostConfig = url_host.replace('controlador.php','');
-                    var urlConfigAtiv = (host) 
-                        ? hostConfig+'?#&acao_pro=set_database&mode=insert&base=atividades&token=&client_id='+encodeURIComponent(host.client_id)+'&url='+encodeURIComponent(host.remote_host)
-                        : hostConfig+'?#&acao_pro=set_option&option_key=gerenciaratividades&option_value=false';
-                    if ( $('#frmCheckerProcessoPro').length == 0 ) { getCheckerProcessoPro(); }
-                    $('#frmCheckerProcessoPro').attr('src', urlConfigAtiv).unbind().on('load', function(){
-                        if (host) {
-                            perfilLoginAtiv = {URL_API: host.remote_host, KEY_USER: '', CLIENT_ID: host.client_id};
-                            urlServerAtiv = perfilLoginAtiv.URL_API;
-                            userHashAtiv = perfilLoginAtiv.KEY_USER;
-                            localStorageStorePro('configBasePro_atividades', perfilLoginAtiv);
-                            initAtividades();
-                            // console.log('INITI');
-                        } else {
-                            // cleanAtivParams(true, true);
-                        }
-                    });
-                } */
-            }
+    var host = jmespath.search(serversAtivPro, "[?domain=='"+window.location.host+"'] | [0]");
+        host = (host !== null && host.enabled) ? host : false;
+    if (host) {
+        if (host.login_default == 'key') {
+            urlServerAtiv = host.remote_host;
+            arrayConfigAtividades = false;
+            arrayConfigAtivUnidade = false;
+            removeLocalDataAtiv();
+            removeOptionsPro('perfilAtividadesSelected');
+            removeOptionsPro('panelAtividadesView');
+            removeOptionsPro('panelAfastamentosView');
+            initEmptyAtividades();
+            $('.panelHome').find('.iconAtividade_update i').removeClass('fa-spin');
+            $('.atividadesBtnPanel button[data-value="Tabela"]').trigger('click');
+            $('#tabelaAtivPanel').attr('class','').css('text-align','center').html('<a class="newLink" onclick="getResendKey(this)" style="transform: scale(1.4);margin: 10px 0;"><i class="fas fa-key laranjaColor"></i> Solicitar chave de acesso</a>');
         }
-    });
+        /* else {
+            var hostConfig = url_host.replace('controlador.php','');
+            var urlConfigAtiv = (host) 
+                ? hostConfig+'?#&acao_pro=set_database&mode=insert&base=atividades&token=&client_id='+encodeURIComponent(host.client_id)+'&url='+encodeURIComponent(host.remote_host)
+                : hostConfig+'?#&acao_pro=set_option&option_key=gerenciaratividades&option_value=false';
+            if ( $('#frmCheckerProcessoPro').length == 0 ) { getCheckerProcessoPro(); }
+            $('#frmCheckerProcessoPro').attr('src', urlConfigAtiv).unbind().on('load', function(){
+                if (host) {
+                    perfilLoginAtiv = {URL_API: host.remote_host, KEY_USER: '', CLIENT_ID: host.client_id};
+                    urlServerAtiv = perfilLoginAtiv.URL_API;
+                    userHashAtiv = perfilLoginAtiv.KEY_USER;
+                    localStorageStorePro('configBasePro_atividades', perfilLoginAtiv);
+                    initAtividades();
+                    // console.log('INITI');
+                } else {
+                    // cleanAtivParams(true, true);
+                }
+            });
+        } */
+    }
 }
 /* 
 function getTokenGoogle(response = false) {

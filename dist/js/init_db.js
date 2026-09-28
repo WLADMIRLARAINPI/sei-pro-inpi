@@ -6,11 +6,10 @@ function getUrlExtension(url) {
         return browser.runtime.getURL(url);
     }
 }
+// Dominios de SEI com tratamento proprio (antes em config_hosts.json). A mesma lista esta em sei-functions-pro.js.
+var CONFIG_HOSTS_PRO = { matches: ['.sp.gov.br', '.antt.gov.br'] };
 function getConfigHost(callback = false, callback_else = false) {
-    var hosts = getUrlExtension("config_hosts.json");
-        fetch(hosts)
-        .then((response) => response.json()) //assuming file contains json
-        .then((json) => setConfigHost(json, callback, callback_else));
+    setConfigHost(CONFIG_HOSTS_PRO, callback, callback_else);
 }
 function setConfigHost(host, callback, callback_else){
     var set_host = false;

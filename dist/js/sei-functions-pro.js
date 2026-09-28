@@ -1033,11 +1033,10 @@ function encodeUrlUploadArvore(response, params) {
         hdnAnexos = (hdnAnexos.indexOf('%2B') !== -1) ? hdnAnexos.replace(/%2B/g,'+') : hdnAnexos;
     return hdnAnexos;
 }
+// Dominios de SEI com tratamento proprio (antes em config_hosts.json). A mesma lista esta em init_db.js.
+var CONFIG_HOSTS_PRO = { matches: ['.sp.gov.br', '.antt.gov.br'] };
 function getConfigHost(callback = false, callback_else = false) {
-    var hosts = URL_SPRO+"config_hosts.json";
-        fetch(hosts)
-        .then((response) => response.json()) //assuming file contains json
-        .then((json) => setConfigHost(json, callback, callback_else));
+    setConfigHost(CONFIG_HOSTS_PRO, callback, callback_else);
 }
 function setConfigHost(host, callback, callback_else, save = true){
     var set_host = false;
@@ -7354,22 +7353,15 @@ function checkHostLimit() {
         return true;
     } else {
         if (NAMESPACE_SPRO == 'SEI Pro') {
-            var host = sessionStorage.getItem('configHost_Pro') !== null ? JSON.parse(sessionStorage.getItem('configHost_Pro')) : false;
-            if (host) {
-                var set_host = false;
-                if (typeof host !== 'undefined' && host !== null &&typeof host.matches !== 'undefined' && host.matches !== null && host.matches.length > 0) {
-                    for (i = 0; i < host.matches.length; i++) {
-                        if (window.location.host.indexOf(host.matches[i]) !== -1) set_host = true;
-                    }
-                }
-                if (set_host) {
-                    if (!checkConfigValue('disablequery') && !verifyConfigValue('disablequery')) return false;
-                    else return true;
-                } else {
-                    return false;
-                } 
+            var set_host = false;
+            for (i = 0; i < CONFIG_HOSTS_PRO.matches.length; i++) {
+                if (window.location.host.indexOf(CONFIG_HOSTS_PRO.matches[i]) !== -1) set_host = true;
+            }
+            if (set_host) {
+                if (!checkConfigValue('disablequery') && !verifyConfigValue('disablequery')) return false;
+                else return true;
             } else {
-                getConfigHost();
+                return false;
             }
         } else {
             return false;
