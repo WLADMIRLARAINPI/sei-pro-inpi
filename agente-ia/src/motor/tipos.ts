@@ -11,6 +11,15 @@ export interface ChamadaTool {
   id: string;
   type: "function";
   function: { name: string; arguments: string };
+  /**
+   * O que o provedor devolveu junto da chamada e exige de volta no histórico.
+   *
+   * O Gemini 3 assina cada chamada de ferramenta (`thought_signature`) e
+   * RECUSA a rodada seguinte se a assinatura não voltar — com HTTP 400
+   * "Function call is missing a thought_signature". Guardamos como veio, sem
+   * interpretar: é opaco e de uso exclusivo do provedor que o emitiu.
+   */
+  extra_content?: unknown;
 }
 
 export type Mensagem =

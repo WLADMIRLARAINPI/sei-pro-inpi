@@ -4,9 +4,9 @@
  * `fetch` é substituído por um que grava o que recebeu.
  */
 
-import { criarProvedor, enderecoDoServico, lerSSE, listarModelos, parametroRecusado, serveParaConversar, SERVICOS, TEMPERATURA_PADRAO } from "../src/motor/provedor";
+import { Acumulador, criarProvedor, enderecoDoServico, lerSSE, limparAssinaturasDeOutro, listarModelos, parametroRecusado, serveParaConversar, SERVICOS, TEMPERATURA_PADRAO } from "../src/motor/provedor";
 import { promptSistema } from "../src/motor/prompt";
-import type { PedidoLLM } from "../src/motor/tipos";
+import type { ChamadaTool, PedidoLLM } from "../src/motor/tipos";
 import { checar, secao } from "./util";
 
 const PEDIDO: PedidoLLM = { mensagens: [{ role: "user", content: "oi" }], tools: [] };
@@ -48,6 +48,57 @@ export async function verificarProvedor(): Promise<void> {
   checar("anthropic vai para o endereco dela", anth.chamadas[0].url === "https://api.anthropic.com/v1/chat/completions");
   checar("anthropic leva os dois cabecalhos proprios", anth.chamadas[0].cabecalhos["anthropic-version"] === "2023-06-01" && anth.chamadas[0].cabecalhos["anthropic-dangerous-direct-browser-access"] === "true");
   checar("so o openrouter manda politica de dados", anth.chamadas[0].corpo.provider === undefined);
+
+  /**
+   * Issue #169: o Gemini 3 assina cada chamada de ferramenta e RECUSA a rodada
+   * seguinte se a assinatura não voltar ("Function call is missing a
+   * thought_signature", HTTP 400). Na camada compatível com OpenAI ela vem em
+   * `tool_calls[].extra_content` — inclusive no streaming, no primeiro pedaço.
+   */
+  secao("provedor: assinatura de ferramenta do Gemini 3");
+  const assinatura = { google: { thought_signature: "Ep4DCpsDAWkUfRM=" } };
+  const acc = new Acumulador();
+  acc.somar({
+    choices: [
+      {
+        delta: {
+          tool_calls: [{ id: "function-call-1", type: "function", extra_content: assinatura, function: { name: "documentos_listar", arguments: '{"proc' } }],
+        },
+      },
+    ],
+  });
+  acc.somar({ choices: [{ delta: { tool_calls: [{ function: { arguments: 'esso":"1"}' } }] }, finish_reason: "tool_calls" }] });
+  const comAssinatura = acc.resposta();
+  checar("a assinatura sobrevive ao streaming", JSON.stringify(comAssinatura.chamadas[0].extra_content) === JSON.stringify(assinatura), comAssinatura.chamadas[0]);
+  checar("e os argumentos continuam sendo juntados", comAssinatura.chamadas[0].function.arguments === '{"processo":"1"}');
+
+  const semAssinatura = new Acumulador();
+  semAssinatura.somar({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "x", arguments: "{}" } }] }, finish_reason: "tool_calls" }] });
+  checar("quem nao assina nao ganha campo nenhum", !("extra_content" in semAssinatura.resposta().chamadas[0]));
+
+  const historico: PedidoLLM["mensagens"] = [
+    { role: "user", content: "liste" },
+    { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "documentos_listar", arguments: "{}" }, extra_content: assinatura }] } as never,
+    { role: "tool", tool_call_id: "c1", content: "[]" } as never,
+  ];
+  const paraGemini = limparAssinaturasDeOutro(historico, "gemini-3.5-flash", "gemini");
+  checar("indo para o Gemini, a assinatura vai junto", (paraGemini[1] as { tool_calls: ChamadaTool[] }).tool_calls[0].extra_content !== undefined);
+  const viaOpenRouter = limparAssinaturasDeOutro(historico, "google/gemini-3-pro-preview", "openrouter");
+  checar("pelo OpenRouter com modelo Gemini, tambem vai", (viaOpenRouter[1] as { tool_calls: ChamadaTool[] }).tool_calls[0].extra_content !== undefined);
+  // Trocar de modelo no meio da conversa é possível no painel, e o histórico é o mesmo.
+  const paraOutro = limparAssinaturasDeOutro(historico, "gpt-5", "openai");
+  checar("trocando para outro provedor, a assinatura sai", (paraOutro[1] as { tool_calls: ChamadaTool[] }).tool_calls[0].extra_content === undefined);
+  checar("e o resto da chamada fica intacto", (paraOutro[1] as { tool_calls: ChamadaTool[] }).tool_calls[0].function.name === "documentos_listar");
+  checar("historico sem assinatura nao e copiado a toa", limparAssinaturasDeOutro([{ role: "user", content: "oi" }], "gpt-5", "openai").length === 1);
+
+  const espiaoGemini = espiao([]);
+  await criarProvedor({ servico: "gemini", chave: "k", modelo: "gemini-3.5-flash", fetch: espiaoGemini.f }).conversar(
+    { mensagens: historico, tools: [] },
+    new AbortController().signal,
+    () => {},
+  );
+  const enviadas = espiaoGemini.chamadas[0].corpo.messages as Array<{ tool_calls?: ChamadaTool[] }>;
+  checar("no corpo que sai para o Gemini a assinatura esta la", enviadas[1].tool_calls?.[0].extra_content !== undefined, enviadas[1]);
 
   secao("provedor: controle fino");
   const semAjuste = espiao([]);

@@ -32,7 +32,7 @@ export const MODELO_PADRAO = "anthropic/claude-sonnet-5";
 
 interface Delta {
   content?: string | null;
-  tool_calls?: Array<{ index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }>;
+  tool_calls?: Array<{ index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string }; extra_content?: unknown }>;
 }
 
 interface Pedaco {
@@ -102,7 +102,7 @@ export class Acumulador {
   texto = "";
   fim = "";
   uso?: Uso;
-  private readonly chamadas: Array<{ id: string; nome: string; args: string }> = [];
+  private readonly chamadas: Array<{ id: string; nome: string; args: string; extra?: unknown }> = [];
 
   somar(p: Pedaco, aoTexto?: (t: string) => void): void {
     if (p.error) throw new Error(p.error.message ?? "Erro do provedor de IA.");
@@ -119,6 +119,9 @@ export class Acumulador {
       const i = typeof tc.index === "number" ? tc.index : tc.id && this.chamadas.length ? this.chamadas.length : Math.max(0, this.chamadas.length - 1);
       const c = (this.chamadas[i] ??= { id: "", nome: "", args: "" });
       if (tc.id) c.id = tc.id;
+      // Assinatura do Gemini 3: chega no primeiro fragmento e precisa voltar
+      // intacta na próxima rodada, senão a API recusa o histórico.
+      if (tc.extra_content !== undefined) c.extra = tc.extra_content;
       if (tc.function?.name) c.nome += tc.function.name;
       if (tc.function?.arguments) c.args += tc.function.arguments;
     }
@@ -136,7 +139,7 @@ export class Acumulador {
   resposta(): RespostaLLM {
     const chamadas: ChamadaTool[] = this.chamadas
       .filter((c) => c && c.nome)
-      .map((c, i) => ({ id: c.id || `chamada_${i}`, type: "function", function: { name: c.nome, arguments: c.args || "{}" } }));
+      .map((c, i) => ({ id: c.id || `chamada_${i}`, type: "function" as const, function: { name: c.nome, arguments: c.args || "{}" }, ...(c.extra !== undefined ? { extra_content: c.extra } : {}) }));
     return { texto: this.texto, chamadas, fim: this.fim || (chamadas.length ? "tool_calls" : "stop"), uso: this.uso };
   }
 }
@@ -360,6 +363,26 @@ export function comCache(mensagens: PedidoLLM["mensagens"], modelo: string, serv
   return saida;
 }
 
+/**
+ * Tira do histórico as assinaturas que pertencem a OUTRO provedor.
+ *
+ * A `thought_signature` do Gemini 3 é obrigatória para ele e desconhecida para
+ * os demais — e campo estranho no corpo costuma virar 400. Como o usuário pode
+ * trocar de modelo no meio da conversa e o histórico continua o mesmo, a
+ * limpeza acontece na hora de enviar, não na hora de guardar.
+ */
+export function limparAssinaturasDeOutro(mensagens: PedidoLLM["mensagens"], modelo: string, servico: Servico): PedidoLLM["mensagens"] {
+  if (servico === "gemini" || /gemini/i.test(modelo)) return mensagens;
+  let mexeu = false;
+  const saida = mensagens.map((m) => {
+    const chamadas = (m as { tool_calls?: ChamadaTool[] }).tool_calls;
+    if (!Array.isArray(chamadas) || !chamadas.some((c) => c?.extra_content !== undefined)) return m;
+    mexeu = true;
+    return { ...m, tool_calls: chamadas.map(({ extra_content: _assinatura, ...resto }) => resto) };
+  });
+  return mexeu ? saida : mensagens;
+}
+
 export function criarProvedor(o: OpcoesProvedor): Provedor {
   const fazer = o.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   const servico = o.servico ?? "openrouter";
@@ -379,7 +402,7 @@ export function criarProvedor(o: OpcoesProvedor): Provedor {
       const montar = () =>
         JSON.stringify({
           model: modelo,
-          messages: o.cache === false ? pedido.mensagens : comCache(pedido.mensagens, modelo, servico),
+          messages: limparAssinaturasDeOutro(o.cache === false ? pedido.mensagens : comCache(pedido.mensagens, modelo, servico), modelo, servico),
           tools: pedido.tools.length ? pedido.tools : undefined,
           stream: true,
           ...Object.fromEntries(Object.entries(parametros).filter(([k]) => !recusados.has(k))),
