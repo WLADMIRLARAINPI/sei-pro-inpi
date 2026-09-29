@@ -144,7 +144,9 @@ function initInsertNewLinksMenu(TimeOut = 9000) {
     }
 }
 function insertNewLinksMenu() {
-    if ($(idMenu).find('.newLinksMenuPro').length == 0) {
+    // A trava olha o primeiro item desta lista, e nao a classe: o item "Agente de IA" (agente-ia/src/ponte/aba.ts)
+    // usa a mesma classe newLinksMenuPro e, entrando antes, fazia estes quatro itens nunca aparecerem (desde a 2.0).
+    if ($(idMenu).find('#pesquisaLinkPermanentePro').length == 0) {
         var newLinkMenu =  '<li><a id="pesquisaLinkPermanentePro" class="newLinksMenuPro" onclick="initBoxSearchProtocoloSEI()"><span>Pesquisar Link Permanente</span></a></li>';
 
         if (checkConfigValue('historicoproc')) newLinkMenu += '<li><a id="historicoProcessosPro" class="newLinksMenuPro" onclick="getHistoryProcessosPro()"><span>Hist\u00F3rico de Processos Visitados</span></a></li>';

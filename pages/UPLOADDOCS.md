@@ -18,7 +18,7 @@ Para juntar um PDF a um processo, o SEI pede um formulário por arquivo. Com o S
 | Campo do SEI | De onde vem |
 | ------------ | ----------- |
 | **Tipo do documento** | Do início do nome do arquivo, quando ele coincide com um tipo aceito pelo SEI. Se não coincidir, vale o tipo padrão configurado; se não houver, **Anexo**. Se o seu órgão também não tiver o tipo Anexo, o SEI Pro **pergunta qual tipo usar** para aquele arquivo |
-| **Número / Nome na árvore** | O restante do nome do arquivo |
+| **Nome na Árvore** | O restante do nome do arquivo. No SEI 3, que não tem esse campo, o texto vai no **Número**. Nos dois casos a árvore mostra o mesmo: tipo seguido do texto |
 | **Data do documento** | A data da última modificação do arquivo; se não houver, a data de hoje |
 | **Formato** | **Nato-digital**, ou o formato configurado nos valores padronizados |
 | **Nível de acesso** | **Público**, ou o nível e a hipótese legal configurados nos valores padronizados |

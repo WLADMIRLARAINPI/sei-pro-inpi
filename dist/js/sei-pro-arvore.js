@@ -1091,7 +1091,7 @@ function loadUploadArvore() {
         for (var k in params.paramsForm) {
             if (postData !== '') postData = postData + '&';
             var valor = (k=='hdnAnexos') ? params.paramsForm[k] : escapeComponent(params.paramsForm[k]);
-                valor = (k=='txtNumero') ? parent.encodeURI_toHex(params.paramsForm[k].normalize('NFC')) : valor;                
+                valor = (k=='txtNumero' || k=='txtNomeArvore') ? parent.encodeURI_toHex(params.paramsForm[k].normalize('NFC')) : valor;
                 postData = postData + k + '=' + valor;
         }
         params.paramsForm = postData;
@@ -1392,7 +1392,16 @@ function submitUploadArvore(htmlAnexo, queuedFiles, mode, result, arrayDropzone,
             param.hdnIdTipoConferencia = param.selTipoConferencia;
             param.txaObservacoes = "";
             param.txtDataElaboracao = txtDataElaboracao;
-            param.txtNumero = escapeComponent(nameDoc);
+            // O nome do arquivo e texto livre: no SEI 4 e 5, que tem os dois campos, vai no "Nome na Arvore"
+            // (no documento externo o "Numero" e opcional e o SEI so valida o tamanho). Antes ia sempre no
+            // "Numero", que e o numero do documento para a pesquisa do SEI. No SEI 3 so existe o "Numero".
+            // Na arvore o resultado e o mesmo: o SEI exibe "Tipo Numero NomeArvore".
+            if (form.find('#txtNomeArvore').length) {
+                param.txtNomeArvore = escapeComponent(nameDoc);
+                param.txtNumero = '';
+            } else {
+                param.txtNumero = escapeComponent(nameDoc);
+            }
             // console.log(parent.checkConfigValue('newdocformat'), parent.getConfigValue('newdocformat'), param.rdoFormato, param.hdnIdTipoConferencia);
             arrayDropzone.options.url = urlUpload;
             arrayDropzone.options.params = {
