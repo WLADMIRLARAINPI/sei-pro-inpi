@@ -177,8 +177,8 @@ restaurarBotaoJqueryUIPro(window.jQuery);
 // sessionStorage ('new_extension'), o que gera falhas dificeis de diagnosticar: icones que nao carregam, "Identifier
 // '...' has already been declared", scripts bloqueados pelo CSP do mundo isolado. A copia isolada do topo registra
 // no <html> (que todas as extensoes enxergam) o host da propria URL, nome, versao e origem. As versoes anteriores nao
-// registram e sao reconhecidas pelas fontes que carregam com a URL da propria extensao (css/fontawesome.pro.min.css
-// e @font-face em /webfonts/, desde 2021). Com mais de uma copia aparece uma barra amarela fixa no topo da pagina; fechada,
+// registram e sao reconhecidas pelos arquivos que carregam com a URL da propria extensao, confirmados um a um (ver
+// verificarCopiasSeiPro). Com mais de uma copia aparece uma barra amarela fixa no topo da pagina; fechada,
 // nao volta na mesma aba para o mesmo conjunto de copias. Os dados lidos do <html> entram so como texto.
 var IDS_LOJA_SEIPRO = {'ajchjgnbfdchmhldfbmajofhgnkojhab': 'SEI Pro Lab', 'pdbbapplhjopafpgidbgceccbbmehcjj': 'SEI Pro'};
 function isFirefoxSeiPro() {
@@ -211,11 +211,13 @@ function initAlertaCopiasSeiPro() {
         [0, 3000, 10000].forEach(function (espera) { setTimeout(function () { verificarCopiasSeiPro(espera > 0); }, espera); });
     } catch (e) {}
 }
-// Versoes anteriores so deixam rastro certo (fontes) quando carregam primeiro: o loadFontIcons pula se as fontes ja
-// estao na pagina, e ai sobra o css/jquery-ui.css do loadFilesUI, um nome generico. Esse CSS e o host que outra copia
-// grava no sessionStorage ('new_extension', lido so a partir de 3 s, quando todas ja gravaram) viram candidatos,
-// confirmados pelo arquivo proprio do SEI Pro (js/sei-functions-pro.js, acessivel pela web): outra extensao que use o
-// mesmo nome de CSS, ou uma copia ja desinstalada que ficou no sessionStorage, nao contam. Um pedido por host e pagina.
+// Versoes anteriores deixam o css/jquery-ui.css do loadFilesUI e, quando carregam primeiro, as fontes (o loadFontIcons
+// pula se ja ha fontes na pagina). Nenhum desses rastros e exclusivo do SEI Pro: extensoes derivadas do codigo dele
+// (ex.: SFIS Pro) injetam o mesmo CSS e as mesmas fontes em /webfonts/, com a mesma marca data-style="seipro-fonticon",
+// e contar as fontes direto acusava essas extensoes como copia. Os rastros e o host que outra copia grava no
+// sessionStorage ('new_extension', lido so a partir de 3 s, quando todas ja gravaram) viram candidatos, confirmados pelo
+// arquivo proprio do SEI Pro (js/sei-functions-pro.js, acessivel pela web em todas as versoes): outra extensao, ou uma
+// copia ja desinstalada que ficou no sessionStorage, nao contam. Um pedido por host e pagina.
 var verificacaoHostsSeiPro = {};
 function confirmarCopiaSeiPro(base, incluirSessao) {
     var host = base.split('/')[2];
@@ -236,20 +238,18 @@ function verificarCopiasSeiPro(incluirSessao) {
         if (incluirSessao) {
             try { var ns = JSON.parse(sessionStorage.getItem('new_extension')); if (ns && ns.URL_SPRO) { candidatos.push(String(ns.URL_SPRO)); } } catch (e) {}
         }
+        var rastros = [];
+        document.querySelectorAll('link[href*="fontawesome.pro.min.css"]').forEach(function (l) { rastros.push(l.getAttribute('href')); });
+        document.querySelectorAll('style').forEach(function (s) { if (s.textContent.indexOf('/webfonts/') !== -1) rastros.push(s.textContent); });
+        var reFontes = /(?:chrome|moz)-extension:\/\/[^\/"'\s)]+\/(?=webfonts\/|css\/fontawesome\.pro\.min\.css)/g, fonte;
+        var textoFontes = rastros.join(' ');
+        while ((fonte = reFontes.exec(textoFontes)) !== null) { candidatos.push(fonte[0]); }
         candidatos.forEach(function (url) {
             var m = String(url).match(/^((?:chrome|moz)-extension:\/\/[^\/"'\s)]+\/)/);
             if (!m) { return; }
             var host = m[1].split('/')[2];
             if (hosts.indexOf(host) === -1 && confirmarCopiaSeiPro(m[1], incluirSessao)) { hosts.push(host); copias.push({host: host}); }
         });
-        var rastros = [];
-        document.querySelectorAll('link[href*="fontawesome.pro.min.css"]').forEach(function (l) { rastros.push(l.getAttribute('href')); });
-        document.querySelectorAll('style').forEach(function (s) { if (s.textContent.indexOf('/webfonts/') !== -1) rastros.push(s.textContent); });
-        var reExtensao = /(?:chrome|moz)-extension:\/\/([^\/"'\s)]+)\/(?:webfonts\/|css\/fontawesome\.pro\.min\.css)/g, m;
-        var texto = rastros.join(' ');
-        while ((m = reExtensao.exec(texto)) !== null) {
-            if (hosts.indexOf(m[1]) === -1) { hosts.push(m[1]); copias.push({host: m[1]}); }
-        }
         if (copias.length > 1) { mostrarAlertaCopiasSeiPro(copias); }
     } catch (e) {}
 }
