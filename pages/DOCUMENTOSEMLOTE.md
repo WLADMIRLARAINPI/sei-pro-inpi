@@ -35,7 +35,8 @@ A ferramenta tem seis etapas:
 3. **Base de dados — Upload:** escolha o arquivo CSV;
 4. **Base de dados — Cabeçalhos e registros:** confira as colunas e a quantidade de linhas encontradas;
 5. **Cruzamento de dados:** veja como cada coluna da planilha preenche cada campo do modelo. Aqui você também escolhe:
-   * **Nome do documento na árvore de processos** — qual coluna da planilha dará nome a cada documento;
+   * **Coluna da planilha com o nome do documento na árvore de processos** — qual coluna dará nome a cada documento;
+   * **Descrição do documento** (opcional) — texto que vai no campo *Descrição* de cada documento gerado. Use `##coluna##` para trazer o valor da planilha, sozinho ou junto com texto: `Termo de sigilo - ##nome## (##unidade##)`. Em branco, o campo fica vazio;
    * **Criar cada documento em um novo processo** — em vez de criar todos no processo atual, abre um processo para cada linha;
 
    Clique em **Iniciar**;
@@ -54,7 +55,7 @@ A função vem **ligada** de fábrica. Ela fica nas [Configurações do SEI Pro]
 * **Os nomes dos campos precisam ser escritos exatamente da mesma forma** no modelo e na planilha. Evite acentos e espaços nos nomes (`municipio`, `data_oficio`). Um campo sem correspondência fica sem preenchimento.
 * A codificação do CSV (UTF-8 ou a do Excel antigo) é detectada automaticamente, para os acentos saírem corretos.
 * Os acentos são retirados do **nome do documento na árvore** (*José* vira *Jose*), porque nem todos os caracteres são aceitos pelo SEI nesse campo. Símbolos como º, ª e ° continuam no nome (*Ofício nº 1ª* vira *Oficio nº 1ª*). O mesmo vale para o **Número**, nos tipos de documento em que ele é informado. O texto do documento mantém os acentos. No SEI 3, a ferramenta avisa antes de continuar.
-* Na **especificação dos novos processos**, os caracteres que o SEI não aceita, típicos de texto colado do Word ou do Excel, são trocados pelo equivalente simples: o travessão (—) vira hífen (-) e as aspas curvas (“ ”) viram aspas retas ("). Os acentos são mantidos.
+* Na **descrição dos documentos** e na **especificação dos novos processos**, os caracteres que o SEI não aceita, típicos de texto colado do Word ou do Excel, são trocados pelo equivalente simples: o travessão (—) vira hífen (-) e as aspas curvas (“ ”) viram aspas retas ("). Os acentos são mantidos. A descrição vai até 250 caracteres, o limite do SEI.
 * Os documentos são criados **sem assinatura**. Para assinar todos de uma vez, use [Ações em Lote](../pages/ACOESEMLOTE.md).
 * Se uma linha falhar, a ferramenta para ali e mostra o motivo e o número da linha. As linhas anteriores já foram criadas. No modo **Criar cada documento em um novo processo**, se o processo da linha chegou a ser aberto sem o documento (por uma falha ou porque você clicou em **Cancelar**), a ferramenta mostra o link dele: confira-o antes de executar de novo.
 * Faça um teste com uma planilha de duas ou três linhas antes de gerar um lote grande.

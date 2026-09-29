@@ -123,6 +123,7 @@ var docsLote_fillModelAnalysis = async (matches, selectedDoc, txtModelo = false)
 var docsLote_detectEncodingCSV = () => {
     $("#inputBD").on("change", function () {
         const file = $(this)[0].files[0];
+        if (!file) return; //o usuario reabriu o seletor e cancelou: readAsBinaryString(undefined) lancava TypeError
         const reader = new FileReader();
         reader.onload = function (e) {
             let csvResult = e.target.result.split(/\r|\n|\r\n/);
@@ -237,7 +238,7 @@ var docsLote_printDataCrossing = async () => {
                             `
                             <tr>
                                 <td colspan="2">
-                                    <p style="font-size: 1.2em;"><i class='fas fa-file-alt cinzaColor'></i> Nome do documento na \u00E1rvore de processos <a class="newLink" style="font-size: 0.8em;" data-spro-tip="Alguns documentos possuem a propriedade <b>N\u00FAmero</b> que quando preenchida exibe o valor na \u00E1rvore de processos logo ap\u00F3s o tipo. Exemplo: Anexo Contrato (Anexo = tipo e Contrato = N\u00FAmero)"><i class="fas fa-info-circle azulColor"></i></a></p>
+                                    <p style="font-size: 1.2em;"><i class='fas fa-file-alt cinzaColor'></i> Coluna da planilha com o nome do documento na \u00E1rvore de processos <a class="newLink" style="font-size: 0.8em;" data-spro-tip="Alguns documentos possuem a propriedade <b>N\u00FAmero</b> que quando preenchida exibe o valor na \u00E1rvore de processos logo ap\u00F3s o tipo. Exemplo: Anexo Contrato (Anexo = tipo e Contrato = N\u00FAmero)"><i class="fas fa-info-circle azulColor"></i></a></p>
                                 </td>
                             </tr>
                             <tr>
@@ -263,7 +264,7 @@ var docsLote_printDataCrossing = async () => {
                             <tr>
                                 <td>
                                     <div style="margin: 10px 0;display: inline-block;">
-                                    <p style="font-size: 1.2em;">Nome do documento na \u00E1rvore de processos <a class="newLink" style="font-size: 0.8em;" data-spro-tip="Somente alguns tipos de documentos suportam a propriedade <b>N\u00FAmero</b> que quando preenchida exibe o valor na \u00E1rvore de processos logo ap\u00F3s o tipo. Exemplo: Anexo Contrato (Anexo = tipo e Contrato = N\u00FAmero)"><i class="fas fa-info-circle colorAzul"></i></a></p>
+                                    <p style="font-size: 1.2em;">Coluna da planilha com o nome do documento na \u00E1rvore de processos <a class="newLink" style="font-size: 0.8em;" data-spro-tip="Somente alguns tipos de documentos suportam a propriedade <b>N\u00FAmero</b> que quando preenchida exibe o valor na \u00E1rvore de processos logo ap\u00F3s o tipo. Exemplo: Anexo Contrato (Anexo = tipo e Contrato = N\u00FAmero)"><i class="fas fa-info-circle colorAzul"></i></a></p>
                                 </td>
                             </tr>
                             <tr>
@@ -274,6 +275,17 @@ var docsLote_printDataCrossing = async () => {
                             ` : 
                             ""
                         }
+                    </tbody>
+                </table>
+                <hr style="all:revert;border: 1px solid #dcdcdc;margin: 10px 0;">
+                <table style="font-size: 9pt !important;width: 100%;">
+                    <tbody>
+                        <tr>
+                            <td>
+                                <p style="font-size: 1.2em;"><i class="fas fa-align-left cinzaColor"></i> Descri\u00E7\u00E3o do documento (opcional) <a class="newLink" style="font-size: 0.8em;" data-spro-tip="Preenche o campo <b>Descri\u00E7\u00E3o</b> de cada documento gerado. Use <b>##coluna##</b> para trazer o valor da planilha, sozinho ou junto com texto. Em branco, o campo fica vazio."><i class="fas fa-info-circle azulColor"></i></a></p>
+                                <input type="text" class="infraText" id="txtDescricaoDoc" maxlength="250" style="width: 480px;padding: 0.8em;" placeholder="Ex: ##${escapeHtml(CSVHeaders[0] || 'coluna')}##">
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
                 <hr style="all:revert;border: 1px solid #dcdcdc;margin: 10px 0;">
@@ -351,13 +363,17 @@ var checkTipoProcessoSelect = () => {
         $("#btnConfirm").prop('disabled', true).addClass('ui-button-disabled ui-state-disabled');
     }
 }
+// Troca ##coluna## pelo valor da linha do CSV (coluna inexistente fica como esta). Serve a Especificacao do processo e a Descricao do documento.
+var docsLote_preencherCampos = (texto, dataCSV) => {
+    return String(texto || '').replace(/##(.*?)##/g, function(match, chave) {
+        return dataCSV[chave] !== undefined ? dataCSV[chave] : match;
+    });
+};
 var docsLote_getLinkNewDoc = async (param, dataCSV, linha = {}) => {
     let urlNewDoc = false;
     if (param.createNewProcs) {
 
-        const txtEspecificacaoProcesso = param.txtEspecificacaoProcesso.replace(/##(.*?)##/g, function(match, chave) {
-            return dataCSV[chave] !== undefined ? dataCSV[chave] : match;
-        });
+        const txtEspecificacaoProcesso = docsLote_preencherCampos(param.txtEspecificacaoProcesso, dataCSV);
 
         const urlProcesso = await docsLote_setNewProc(param.idTipoProcedimento, txtEspecificacaoProcesso);
         if (!urlProcesso) throw new Error('N\u00E3o foi poss\u00EDvel criar o processo');
@@ -582,7 +598,12 @@ var docsLote_formNewDoc = async (urlFormNewDoc, data, dataDialog) => {
     params.rdoNivelAcesso = '0';
     params.hdnFlagDocumentoCadastro = '2';
     params.txaObservacoes = '';
-    params.txtDescricao = '';
+    // Descricao do documento (ideia do PluriDocs, 12/2025): texto com ##coluna## preenchido pela linha do CSV. Vai em latin-1 e
+    // escapado no docsLote_confirmDocData, como o txtNomeArvore, entao os acentos ficam; o corte segue o maxlength do SEI (250).
+    const maxDescricao = parseInt(form.find('#txtDescricao').attr('maxlength'), 10) || 250;
+    params.txtDescricao = dataDialog.txtDescricaoDoc
+        ? docsLote_paraLatin1(docsLote_preencherCampos(dataDialog.txtDescricaoDoc, data)).substring(0, maxDescricao).trim()
+        : '';
     if (dataDialog.nrTxtPadrao) {
         params.selTextoPadrao = selectedModel.numero;
         params.hdnIdTextoPadrao = selectedModel.numero;
@@ -627,9 +648,9 @@ var docsLote_confirmDocData = async (urlConfirmDocData, params) => {
     for (var k in params) {
         if (postData !== '') postData = `${postData}&`;
         // Hidden das lupas levam "id(+-)texto" com separadores ISO-8859-1 (0xB1/0xA5): vao escapados como no setNewDoc,
-        // senao sairiam em UTF-8 sob charset ISO-8859-1 e o SEI nao separaria os ids. txtNumero e txtNomeArvore ja chegam
-        // convertidos para latin-1 e tambem vao escapados ('&', '+' e '%' cortavam o valor).
-        var valor = (k=='txtNomeArvore' || k=='txtNumero' || /^hdn(Interessados|Destinatarios|Assuntos|UnidadesReabertura)$/.test(k)) ? escapeComponent(params[k]) : params[k];
+        // senao sairiam em UTF-8 sob charset ISO-8859-1 e o SEI nao separaria os ids. txtNumero, txtNomeArvore e txtDescricao
+        // ja chegam convertidos para latin-1 e tambem vao escapados ('&', '+' e '%' cortavam o valor).
+        var valor = (k=='txtNomeArvore' || k=='txtNumero' || k=='txtDescricao' || /^hdn(Interessados|Destinatarios|Assuntos|UnidadesReabertura)$/.test(k)) ? escapeComponent(params[k]) : params[k];
             postData = `${postData}${k}=${valor}`;
     }
 
@@ -703,6 +724,11 @@ var docsLote_editDocContent = async (urlEditor, data) => {
         if (!urlSubmitForm) throw new Error('Link para salvar o documento n\u00E3o encontrado');
 
         const initialData = editorCK5Config.initialData || {};
+        // Mesmo contrato do cliente CK5 do SEI (editor/ck5/src/sei.js, _salvarConteudo): versao lida da config, 'N' para o SEI
+        // recusar se alguem salvou antes. Sem versao na config, o SEI compara null e recusa sempre ('Existe uma nova versao'):
+        // ai vai 'S', como o PluriDocs faz, o que e seguro porque o documento acabou de ser criado pelo proprio lote.
+        const versaoEditor = editorCK5Config.sei.versao;
+        const semVersao = (versaoEditor === null || typeof versaoEditor === 'undefined' || versaoEditor === '');
         jsonSaveDoc = {
             secoesConteudo: Object.keys(initialData).map((nome) => ({
                 nome,
@@ -710,14 +736,18 @@ var docsLote_editDocContent = async (urlEditor, data) => {
                     data[match.substring(2, match.length - 2)].replace(regex2, (match) => docsLote_specialChars[match])
                 )
             })),
-            ignorarNovaVersao: 'N',
-            versao: editorCK5Config.sei.versao
+            ignorarNovaVersao: semVersao ? 'S' : 'N',
+            versao: semVersao ? null : versaoEditor
         };
     } else {
-        urlSubmitForm = $(htmlEditor).filter((_, el) => $(el).attr('id') === 'frmEditor').attr('action');
+        // Documento inerte do DOMParser em vez de $(htmlEditor): o jQuery achata a pagina e o .filter so achava o #frmEditor
+        // quando ele era no de topo (basta um modulo embrulhar o form num div para falhar). Aqui ele e achado em qualquer nivel
+        // (mesma correcao do PluriDocs, 06/2026), e os handlers inline da pagina nao rodam.
+        const $editor = $(new DOMParser().parseFromString(htmlEditor, 'text/html'));
+        urlSubmitForm = $editor.find('#frmEditor').attr('action');
         if (!urlSubmitForm) throw new Error('Link para salvar o documento n\u00E3o encontrado'); //sem a action, o docsLote_saveDoc postaria na pagina atual
 
-        const textAreas = $(htmlEditor).find('div#divEditores textarea');
+        const textAreas = $editor.find('div#divEditores textarea');
         const allText = $.map(textAreas, function(v){ return $(v).text() }).join('');
         const arrayCamposDinamicos = uniqPro(getHashTagsPro($(allText).map(function(){ return $(this).text().replace(/\u00A0/gm, " ") }).get().join(' ')));
         const dadosProcesso = typeof dadosProcessoPro !== 'undefined' && typeof dadosProcessoPro.propProcesso !== 'undefined'
@@ -742,9 +772,10 @@ var docsLote_editDocContent = async (urlEditor, data) => {
         });
         // console.log({data:data, dataCrossing: dataCrossing, docsLote_specialChars:docsLote_specialChars, arrayCamposDinamicos:arrayCamposDinamicos, textAreasReplaced:textAreasReplaced, textAreas:textAreas, arrayCamposDinamicos:arrayCamposDinamicos, dadosProcesso:dadosProcesso});
 
-        $(htmlEditor).find('input[type=hidden').each((_, input) => {
-            if (!$(input).attr('name').toLowerCase().includes('unidade'))
-            paramsSaveDoc[$(input).attr('name')] = $(input).val().replace(regex2, (match) => docsLote_specialChars[match]);
+        $editor.find('input[type=hidden]').each((_, input) => {
+            const nome = $(input).attr('name');
+            if (nome && !nome.toLowerCase().includes('unidade'))
+            paramsSaveDoc[nome] = ($(input).val() || '').replace(regex2, (match) => docsLote_specialChars[match]);
         });
     }
 
@@ -930,7 +961,12 @@ var docLoteModalSelecaoBaseDados = (nrDoc, csvFile, nrTxtPadrao) => {
                 docsLote_detectEncodingCSV();
                 $("#btnEnviaCSV").prop('disabled', true).addClass('ui-button-disabled ui-state-disabled');
                 $("#inputBD").change(() => {
-                    $("#btnEnviaCSV").prop('disabled', false).removeClass('ui-button-disabled ui-state-disabled');
+                    //Cancelar o seletor esvazia o input: sem arquivo, o Avancar lia file.name de undefined
+                    if ($("#inputBD").val()) {
+                        $("#btnEnviaCSV").prop('disabled', false).removeClass('ui-button-disabled ui-state-disabled');
+                    } else {
+                        $("#btnEnviaCSV").prop('disabled', true).addClass('ui-button-disabled ui-state-disabled');
+                    }
                 });
             },
             buttons: [{
@@ -954,7 +990,8 @@ var docLoteModalSelecaoBaseDados = (nrDoc, csvFile, nrTxtPadrao) => {
                 click: () => {
                     $('#baseDados small').remove();
                     const file = $("#inputBD")[0].files[0];
-                    
+                    if (!file) return;
+
                     if (file.name.substring(file.name.lastIndexOf("."), file.name.length).toLocaleLowerCase().trim() === ".csv") {
                         docLoteModalAnaliseCSV(nrDoc, $("#inputBD")[0].files[0], nrTxtPadrao);
                     } else {
@@ -998,7 +1035,12 @@ var docLoteModalLoader = (paramData) => {
 // Texto legivel e seguro (HTML escapado) para o modal de erro: Error, jqXHR rejeitado pelo $.ajax, ou a resposta crua
 // do SEI que o docsLote_saveDoc lanca (pode ser uma pagina inteira).
 var docsLote_textoErro = (e) => {
+    // O controlador REST do SEI 5 (salvar no CK5) recusa com HTTP != 200 e corpo {erro: '...'}: mostra a mensagem dele
+    const erroRest = (e && typeof e.status !== 'undefined')
+        ? trycatch(() => (e.responseJSON || JSON.parse(e.responseText)).erro, false)
+        : false;
     let texto = (e && e.message) ? String(e.message)
+        : erroRest ? `O SEI recusou a grava\u00E7\u00E3o (HTTP ${e.status}): ${erroRest}`
         : (e && typeof e.status !== 'undefined') ? `Falha na comunica\u00E7\u00E3o com o SEI (HTTP ${e.status}${e.statusText ? ' ' + e.statusText : ''})`
         : String(e || 'Erro desconhecido');
     if (/<[a-z!\/]/i.test(texto)) {
@@ -1082,6 +1124,7 @@ var docLoteModalCruzamentoDados = (nrDoc, csvFile, nrTxtPadrao) => {
                         createNewProcs: $("#newProcs").is(":checked"),
                         idTipoProcedimento: $('#tipoProcessoSelect').val(),
                         txtEspecificacaoProcesso: $('#txtEspecificacaoProcesso').val(),
+                        txtDescricaoDoc: $('#txtDescricaoDoc').val(),
                         nrDoc: nrDoc,
                         csvFile: csvFile,
                         nrTxtPadrao: nrTxtPadrao
