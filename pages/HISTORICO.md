@@ -2,6 +2,14 @@
 
 ## ![SEI Pro Histórico de Versões](../img/icon-historico.png) Histórico de versões
 
+### Versão 2.2.4
+29/09/2026
+
+Duas correções que chegaram pelas avaliações da Chrome Web Store.
+
+- **Quatro itens voltam ao menu lateral do SEI**: *Pesquisar Link Permanente*, [Histórico de Processos Visitados](../pages/HISTORICOPROC.md), [Ferramentas de PDF](../pages/FERRAMENTASPDF.md) e [Processos em Lote](../pages/PROCESSOSEMLOTE.md). Desde a versão 2.0 eles não apareciam para ninguém. A causa: o item novo do *Agente de IA* usava a mesma marcação que a extensão conferia para não colocar esses itens duas vezes — e, como o Agente entra primeiro, a extensão concluía que eles já estavam lá. Relato de *Alessandro Costa*
+- [Enviar múltiplos documentos externos](../pages/UPLOADDOCS.md): no SEI 4 e no SEI 5, o nome do arquivo passa a ir para o campo **Nome na Árvore**, e não mais para o **Número**. Na árvore o documento aparece igual, mas o Número fica livre para o número de verdade do documento, que é o que a pesquisa do SEI procura. No SEI 3, que não tem o Nome na Árvore, nada muda. Relato de *José Fernando Souza Fernandes*
+
 ### Versão 2.2.3
 28/09/2026
 
