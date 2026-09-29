@@ -2,6 +2,15 @@
 
 ## ![SEI Pro Histórico de Versões](../img/icon-historico.png) Histórico de versões
 
+### Versão 2.2.5
+29/09/2026
+
+Novidades no Documentos em Lote, vindas do PluriDocs, e um acerto no aviso de cópias do SEI Pro.
+
+- [Documentos em Lote](../pages/DOCUMENTOSEMLOTE.md): **novo campo *Descrição do documento***, na etapa de cruzamento de dados. Ele preenche o campo *Descrição* de cada documento gerado e aceita `##coluna##` para trazer o valor da planilha, sozinho ou junto com texto: `Termo de sigilo - ##nome## (##unidade##)`. É opcional: em branco, o campo fica vazio, como antes. Os acentos são mantidos e o texto vai até 250 caracteres, o limite do SEI. A ideia veio do [PluriDocs SEI!](https://github.com/tuliogontijo/PluriDocs-SEI), de *Tulio Gontijo*, a ferramenta que deu origem ao Documentos em Lote
+- Ainda no Documentos em Lote: cancelar a escolha do arquivo CSV não trava mais o botão **Avançar**; no SEI 5, quando o SEI recusa a gravação de um documento, a mensagem dele aparece na janela de erro, em vez de um erro genérico; e a leitura do editor do SEI 3 e 4 ficou mais robusta
+- **O aviso de "cópias do SEI Pro ativas" não confunde mais outras extensões com o SEI Pro.** Extensões feitas a partir do código do SEI Pro, como o *SFIS Pro*, carregam os mesmos ícones, e o aviso as contava como uma segunda cópia, pedindo para desativar algo que não era o SEI Pro. Agora cada suspeita é conferida antes de entrar no aviso. Uma segunda instalação do SEI Pro continua sendo avisada
+
 ### Versão 2.2.4
 29/09/2026
 
