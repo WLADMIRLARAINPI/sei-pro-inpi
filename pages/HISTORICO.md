@@ -2,6 +2,15 @@
 
 ## ![SEI Pro Histórico de Versões](../img/icon-historico.png) Histórico de versões
 
+### Versão 2.3.1
+01/10/2026
+
+Correção no aviso de erro do Agente de IA e um jeito de pedir ajuda sem precisar descrever o problema.
+
+- **"Muitas requisições ao modelo" deixou de ser a resposta para tudo.** Quem usa o Agente com chave própria e via esse aviso repetido em toda pergunta não estava com pressa: o serviço de IA devolve o mesmo código tanto para *"você está indo rápido demais"* quanto para *"sua conta está sem crédito"* — e o segundo caso nunca se resolve esperando. Agora o agente distingue os dois, diz qual é o seu e o que fazer: adicionar crédito, ou esperar o tempo que o próprio serviço informa. Relato de *Francisco*
+- Na mesma correção: quando é limite de ritmo, o agente passa a **esperar o tempo que o serviço pede** (antes tentava de novo em 1, 2 e 4 segundos, curto demais para um limite que é por minuto — e cada tentativa gastava mais do limite). Quando é falta de crédito, ele para na primeira vez, em vez de insistir três vezes à toa. O aviso também explica a causa comum: cada pergunta leva junto o catálogo de ferramentas do SEI, e conta nova costuma ter limite baixo — um modelo "mini" resolve
+- **Novo — todo erro agora tem um botão de copiar.** Ele leva a mensagem **e um diagnóstico técnico** prontos para colar num chamado ou numa conversa com quem mantém a extensão: versão, navegador, serviço de IA e modelo, código da resposta, o que o provedor respondeu, tamanho da conversa, últimas ferramentas usadas e se o navegador autorizou o acesso ao endereço do serviço. Uma seta ao lado abre esse diagnóstico na tela, para você conferir antes de enviar. **Não vão junto** a sua chave, os tokens dos conectores, o conteúdo dos documentos, o texto da conversa, o número do processo nem a sigla da sua unidade
+
 ### Versão 2.3
 01/10/2026
 
