@@ -277,6 +277,32 @@ Toda alteração feita pelo agente aparece na conversa como uma linha — e, qua
 
 Onde não há volta, a linha diz *sem desfazer* e, ao passar o mouse, explica por quê. Nada é escondido: o agente continua pedindo aprovação **antes** de cada alteração — o desfazer é a segunda rede, não a primeira.
 
+### Instruções escondidas dentro de documentos
+
+Em outubro de 2026 o STF multou um advogado que escondeu, no cabeçalho de uma petição, um comando dirigido à inteligência artificial que lê os autos — texto que não aparece na tela, mas aparece para quem extrai o conteúdo. O mesmo truque cabe em qualquer processo do SEI, e quem lê o documento aqui é o agente.
+
+O SEI Pro trata isso em quatro frentes, sem que você precise configurar nada.
+
+#### 1. Documento é dado, nunca ordem
+
+Para o agente, só três coisas são instrução: as regras do próprio agente, as **regras da unidade** que você cadastrou e **o seu pedido** na conversa. Tudo o que vem de documento, anexo, metadado, cabeçalho, rodapé ou campo oculto é **conteúdo** — mesmo escrito em forma de ordem.
+
+#### 2. O que está escondido da tela é apontado
+
+Na hora de ler o documento, o SEI Pro examina o HTML antes de virar texto e identifica o que existe no arquivo mas **não aparece para quem assina**: letra branca sobre fundo branco, fonte de tamanho zero, `display:none`, caixa fora da tela. Esse trecho não é apagado — documento é prova —, mas é apontado.
+
+#### 3. O conteúdo vai delimitado
+
+O texto do documento chega ao modelo dentro de uma marcação com um **código sorteado a cada conversa**. Como o documento foi escrito antes, não há como ele "fechar" a marcação e continuar escrevendo como se fosse instrução. Trechos suspeitos chegam marcados: ⟦instrução ignorada: …⟧.
+
+Também são removidos os **caracteres invisíveis** — aqueles que não aparecem em lugar nenhum e servem só para partir palavras e escapar da verificação.
+
+#### 4. Você fica sabendo
+
+Quando algo é encontrado, aparece na conversa uma **verificação de integridade**: em que documento está, o que é e o que foi feito. E se o agente propuser qualquer alteração no SEI depois disso, o **cartão de aprovação** traz o aviso de que um documento lido naquela conversa trazia conteúdo dirigido a IA — porque aprovar sabendo disso é diferente de aprovar sem saber.
+
+> O que isso **não** faz: não impede que um documento contenha instruções, e sim que elas sejam obedecidas em silêncio. A trava que impede qualquer alteração no SEI continua sendo a sua aprovação. E comando escondido dentro de uma imagem só aparece se o reconhecimento de texto estiver ligado.
+
 ### O que o agente não faz
 
 * **Processo sigiloso:** o agente não carrega. Estando você num processo sigiloso, ele se recusa a responder qualquer coisa;
