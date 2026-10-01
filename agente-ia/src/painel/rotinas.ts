@@ -256,3 +256,37 @@ export function avaliarPassos(r: Rotina, passos: PassoParaAvaliar[]): { aprovado
   }
   return { aprovado: true };
 }
+
+/** Nome do alarme do navegador de uma rotina. */
+export const NOME_ALARME = "rotina:";
+
+/**
+ * Os alarmes que o navegador deve ter, um por rotina agendada.
+ *
+ * Rotina manual não tem alarme (ela roda quando o usuário manda), nem rotina
+ * desligada ou sem instrução. O período é sempre de uma hora: é a menor
+ * janela que existe (a frequência horária) e o `chrome.alarms` não é preciso
+ * o bastante para valer um período menor — quem decide se a rotina está
+ * vencida é `vencidas`, não o alarme.
+ */
+export function alarmesDe(rotinas: Rotina[]): Array<{ nome: string; periodoMin: number }> {
+  return rotinas
+    .filter((r) => r.ativa && r.frequencia !== "manual" && temInstrucao(r))
+    .map((r) => ({ nome: `${NOME_ALARME}${r.id}`, periodoMin: 60 }));
+}
+
+/**
+ * Título e corpo da notificação do navegador.
+ *
+ * O corpo é a primeira linha útil do resultado: quem recebe o aviso precisa
+ * saber o que aconteceu sem abrir o painel.
+ */
+export function textoDoAviso(r: Rotina, e: Execucao, desligada: boolean): { titulo: string; corpo: string } {
+  const primeira = e.resumo.split("\n").find((l) => l.trim())?.trim() ?? "";
+  const corpo = desligada
+    ? "A rotina foi desligada depois de uma falha ao alterar o SEI. Veja a conversa."
+    : e.ok
+      ? primeira.slice(0, 180) || "Terminou sem nada a relatar."
+      : `Falhou: ${primeira.slice(0, 160) || "sem detalhe"}`;
+  return { titulo: `Rotina: ${r.nome}`, corpo };
+}

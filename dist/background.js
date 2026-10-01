@@ -66,3 +66,69 @@ browser.runtime.onMessage.addListener(function (msg, sender) {
     browser.sidebarAction.open();
   }
 });
+
+/******************************************************************************
+ * Rotinas do Agente de IA: o alarme AVISA, o painel EXECUTA.
+ *
+ * A sessao do SEI e da aba do usuario, e a ponte liga o content script direto
+ * ao painel: nao ha como consultar o SEI daqui. Entao, na hora marcada, se o
+ * painel esta aberto (porta "agente-vivo"), pedimos que ele rode; se nao esta,
+ * mostramos uma notificacao que ao ser clicada abre o agente.
+ *
+ * No Firefox nada disto roda: o manifest v2 do SEI Pro nao declara background.
+ ******************************************************************************/
+var portasDoAgente = [];
+
+browser.runtime.onConnect.addListener(function (porta) {
+  if (!porta || porta.name !== "agente-vivo") return;
+  portasDoAgente.push(porta);
+  porta.onDisconnect.addListener(function () {
+    portasDoAgente = portasDoAgente.filter(function (p) { return p !== porta; });
+  });
+});
+
+function avisarRotinaPendente(id, nome) {
+  if (!browser.notifications || !browser.notifications.create) return;
+  browser.notifications.create("rotina-pendente:" + id, {
+    type: "basic",
+    iconUrl: browser.runtime.getURL("icons/menu/botpro_icon.svg"),
+    title: "Rotina pendente: " + nome,
+    // "Abra o agente" e literal: a rotina so roda com o painel aberto.
+    message: "Abra o Agente de IA para rodar esta rotina."
+  }, function () { /* sem permissao de notificacao: nada a fazer */ });
+}
+
+if (browser.alarms && browser.alarms.onAlarm) {
+  browser.alarms.onAlarm.addListener(function (alarme) {
+    if (!alarme || alarme.name.indexOf("rotina:") !== 0) return;
+    var id = alarme.name.slice("rotina:".length);
+    if (portasDoAgente.length) {
+      portasDoAgente.forEach(function (p) { p.postMessage({ tipo: "rodarRotinas", rotina: id }); });
+      return;
+    }
+    browser.storage.local.get("agenteIA_rotinas").then(function (v) {
+      var lista = (v && v.agenteIA_rotinas) || [];
+      var achadas = lista.filter(function (x) { return x.id === id; });
+      if (achadas.length && achadas[0].ativa) avisarRotinaPendente(id, achadas[0].nome);
+    });
+  });
+}
+
+if (browser.notifications && browser.notifications.onClicked) {
+  browser.notifications.onClicked.addListener(function (id) {
+    if (id.indexOf("rotina") !== 0) return;
+    browser.notifications.clear(id);
+    function emAba() { browser.tabs.create({ url: browser.runtime.getURL("html/agente.html") }); }
+    // O clique na notificacao e gesto do usuario: serve para abrir o painel.
+    if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.open) {
+      browser.tabs.query({ active: true, currentWindow: true }).then(function (abas) {
+        if (abas && abas.length) chrome.sidePanel.open({ tabId: abas[0].id }).catch(emAba);
+        else emAba();
+      });
+    } else if (browser.sidebarAction && browser.sidebarAction.open) {
+      browser.sidebarAction.open();
+    } else {
+      emAba();
+    }
+  });
+}

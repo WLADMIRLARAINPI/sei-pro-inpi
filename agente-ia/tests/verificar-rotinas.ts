@@ -6,11 +6,13 @@
  */
 
 import {
+  alarmesDe,
   avaliarPassos,
   descreverFrequencia,
   MAX_EXECUCOES,
   normalizarRotina,
   registrarExecucao,
+  textoDoAviso,
   vencidas,
   vencimento,
   type Rotina,
@@ -150,4 +152,31 @@ export function verificarRotinas(): void {
   const paraAprovar = avaliarPassos(rotina({ alcance: "aprovar" }), [passo("processo_marcador", "escrita")]);
   checar("alcance aprovar nao decide sozinho", !paraAprovar.aprovado && /aprova\u00E7\u00E3o do usu\u00E1rio/i.test(paraAprovar.motivo ?? ""), paraAprovar);
   checar("plano so de leitura passa em qualquer alcance", avaliarPassos(rotina(), [passo("processos_listar", "leitura")]).aprovado);
+
+  secao("rotinas: alarmes do navegador");
+  const paraAlarme = [
+    rotina({ id: "a", frequencia: "horaria" }),
+    rotina({ id: "b", frequencia: "manual" }),
+    rotina({ id: "c", frequencia: "diaria", ativa: false }),
+    rotina({ id: "d", frequencia: "semanal", diaSemana: 2 }),
+    rotina({ id: "e", frequencia: "diaria", pergunta: "  ", skills: [] }),
+  ];
+  const alarmes = alarmesDe(paraAlarme);
+  checar("manual nao tem alarme", !alarmes.some((a) => a.nome.endsWith(":b")), alarmes);
+  checar("desligada nao tem alarme", !alarmes.some((a) => a.nome.endsWith(":c")));
+  checar("sem instrucao nao tem alarme", !alarmes.some((a) => a.nome.endsWith(":e")));
+  checar("as outras tem", alarmes.length === 2 && alarmes.every((a) => a.nome.startsWith("rotina:")), alarmes);
+  checar("o periodo nunca e menor que uma hora", alarmes.every((a) => a.periodoMin >= 60), alarmes);
+
+  secao("rotinas: texto do aviso");
+  const okExec = { em: 1, ok: true, resumo: "3 processos parados\nDetalhes abaixo", custo: 0.02 };
+  const aviso = textoDoAviso(rotina({ nome: "Parados" }), okExec, false);
+  checar("o titulo diz qual rotina", aviso.titulo === "Rotina: Parados", aviso);
+  checar("o corpo e a primeira linha util", aviso.corpo === "3 processos parados", aviso);
+  const falhou = textoDoAviso(rotina({ nome: "Parados" }), { em: 1, ok: false, resumo: "a aba do SEI caiu", custo: 0 }, false);
+  checar("falha aparece como falha", /^Falhou: a aba do SEI caiu/.test(falhou.corpo), falhou);
+  const desligada = textoDoAviso(rotina({ nome: "Marcar" }), okExec, true);
+  checar("rotina desligada por falha de escrita avisa isso", /desligada/.test(desligada.corpo), desligada);
+  const vazia = textoDoAviso(rotina(), { em: 1, ok: true, resumo: "   ", custo: 0 }, false);
+  checar("resultado vazio ainda rende um aviso legivel", vazia.corpo.length > 0, vazia);
 }

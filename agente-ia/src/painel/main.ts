@@ -27,10 +27,24 @@ import { inversaDe, motivoSemDesfazer, type AcaoFeita, type ResultadoDeEscrita }
 import { avaliarRegras, guardarRegras, listarRegras, recadoDoBloqueio, REGRAS_SUGERIDAS, type Regra } from "./regras";
 import { cabeMaisUma, gastoDeHoje, somarGastoDoDia, SEM_LIMITE, type Limites } from "./gasto";
 import { anotar, blocoDeMemoria, guardarMemoria, listarMemoria, MAX_TEXTO, type Lembranca } from "./memoria";
-import { descreverFrequencia, DIAS, guardarRotinas, listarRotinas, vencidas, type Rotina } from "./rotinas";
+import {
+  alarmesDe,
+  avaliarPassos,
+  descreverAlcance,
+  descreverFrequencia,
+  guardarRotinas,
+  listarRotinas,
+  NOME_ALARME,
+  registrarExecucao,
+  textoDoAviso,
+  vencidas,
+  type Execucao,
+  type Rotina,
+} from "./rotinas";
 import { guardarConectores, listarConectores, type Conector } from "../mcp/conectores";
 import { linhasDeConectores, toolsMcp } from "../mcp/tools";
 import { cartaoExterno, secaoConectores } from "./mcp-ui";
+import { secaoRotinas } from "./rotinas-ui";
 import {
   baixarColecao,
   baixarSkillSeMudou,
@@ -186,6 +200,15 @@ class App {
 
   /** Servidores MCP que o usuário ligou (ver `mcp/conectores.ts`). */
   private conectores: Conector[] = [];
+
+  /**
+   * Rotina sendo executada agora.
+   *
+   * É o que permite à rotina autônoma aprovar o próprio plano sem um segundo
+   * motor: `aprovarPlano` consulta isto e decide por `avaliarPassos` em vez
+   * de abrir o cartão. Fora de rotina, vale `null` e tudo segue como sempre.
+   */
+  private rotinaEmCurso: { rotina: Rotina; escritas: string[] } | null = null;
 
   /** Fluxos mapeados no Estúdio de Fluxo, e o que o usuário mandou não sugerir. */
   private fluxos: Fluxo[] = [];
@@ -367,6 +390,19 @@ class App {
     await this.restaurarSessao();
     this.atualizarAba();
     void this.rodarRotinas();
+    void this.sincronizarAlarmes();
+    // Com o painel aberto, quem confere os vencimentos é esta varredura: o
+    // alarme do navegador acorda o service worker, não esta página.
+    setInterval(() => void this.rodarRotinas(), 5 * 60 * 1000);
+    // O background avisa quando um alarme vence; executar é sempre aqui.
+    try {
+      const porta = chrome.runtime.connect({ name: "agente-vivo" });
+      porta.onMessage.addListener((m: { tipo?: string }) => {
+        if (m?.tipo === "rodarRotinas") void this.rodarRotinas();
+      });
+    } catch {
+      /* sem background (Firefox): a varredura periódica cobre */
+    }
     this.redesenhar();
     this.elEntrada.focus();
   }
@@ -1066,79 +1102,24 @@ class App {
     );
 
     // ------------------------------------------------- rotinas
-    const listaRotinas = h("div", { class: "skills" });
-    const novaRotina = h("button", {}, "Nova rotina");
-    const desenharRotinas = () => {
-      listaRotinas.replaceChildren(
-        ...(this.rotinas.length
-          ? this.rotinas.map((ro) =>
-              h(
-                "div",
-                { class: "skill rotina" },
-                h("input", {
-                  type: "checkbox",
-                  class: "switch",
-                  title: ro.ativa ? "Ativa" : "Desligada",
-                  ...(ro.ativa ? { checked: true } : {}),
-                  onchange: async (ev: Event) => {
-                    ro.ativa = (ev.target as HTMLInputElement).checked;
-                    await guardarRotinas(this.rotinas);
-                  },
-                }),
-                h(
-                  "div",
-                  { class: "skill-texto" },
-                  h("strong", {}, ro.nome),
-                  h("code", {}, descreverFrequencia(ro)),
-                  h("small", {}, ro.pergunta),
-                  h("small", { class: "origem" }, ro.ultimaEm ? `rodou em ${new Date(ro.ultimaEm).toLocaleString("pt-BR")}` : "ainda n\u00E3o rodou"),
-                ),
-                h("button", { class: "icone", title: "Editar", "aria-label": `Editar ${ro.nome}`, onclick: () => this.editarRotina(ro, desenharRotinas) }, icone("lapis", 15)),
-                h(
-                  "button",
-                  {
-                    class: "icone",
-                    title: "Remover",
-                    "aria-label": `Remover ${ro.nome}`,
-                    onclick: async () => {
-                      this.rotinas = this.rotinas.filter((x) => x.id !== ro.id);
-                      await guardarRotinas(this.rotinas);
-                      desenharRotinas();
-                    },
-                  },
-                  icone("lixeira", 15),
-                ),
-              ),
-            )
-          : [
-              h(
-                "div",
-                { class: "ajuda" },
-                "Nenhuma rotina. Rotina \u00E9 uma pergunta que o agente faz sozinho de tempos em tempos \u2014 \u201Cprocessos parados h\u00E1 mais de 30 dias\u201D, \u201Cdocumentos sem assinatura na unidade\u201D.",
-              ),
-            ]),
-      );
-      atualizarResumos();
-    };
-    desenharRotinas();
-    novaRotina.addEventListener("click", () => this.editarRotina(null, desenharRotinas));
-    const secaoRotinas = h(
-      "div",
-      { class: "campo" },
-      h("label", {}, "Rotinas"),
-      listaRotinas,
-      h("div", { class: "com-botao" }, novaRotina),
-      h(
-        "div",
-        { class: "nota" },
-        icone("escudo", 15),
-        h(
-          "span",
-          {},
-          "Rotina \u00E9 s\u00F3 LEITURA: ela nunca altera nada no SEI. E ela roda quando voc\u00EA abre o agente depois do hor\u00E1rio marcado \u2014 a extens\u00E3o vive no seu navegador, com a sua sess\u00E3o, e n\u00E3o h\u00E1 servidor do SEI Pro para agir de madrugada.",
-        ),
-      ),
-    );
+    const rotinasUI = secaoRotinas({
+      rotinas: () => this.rotinas,
+      definir: async (lista) => {
+        this.rotinas = lista;
+        await guardarRotinas(lista);
+        await this.sincronizarAlarmes();
+        atualizarResumos();
+      },
+      skills: () => this.skills.map((s) => ({ id: s.id, nome: s.nome })),
+      escritasDisponiveis: () =>
+        [...TOOLS_SEI, ...toolsMotor()]
+          .filter((t) => t.efeito !== "leitura" && t.efeito !== "interna" && t.efeito !== "externo")
+          .map((t) => ({ nome: t.nome, efeito: t.efeito })),
+      abrirModal: (op) => this.abrirModal(op),
+      rodarAgora: (r) => void this.rodarRotina(r, "manual"),
+      pedirPermissaoDeAviso: () => this.pedirPermissaoDeAviso(),
+    });
+    const secaoRotinasEl = rotinasUI.elemento;
 
     // ------------------------------------------------- memória da unidade
     const usarMemoria = h("input", { type: "checkbox", class: "switch", ...(this.config.memoria ? { checked: true } : {}) });
@@ -1501,7 +1482,7 @@ class App {
               ),
             ),
           ),
-          secaoRotinas,
+          secaoRotinasEl,
         ),
         h("div", { class: "nota atencao rodape-modal" }, icone("alerta", 15), h("span", {}, RESPONSABILIDADE)),
       ],
@@ -1585,82 +1566,6 @@ class App {
     void carregarModelos(false);
   }
 
-  /** Cadastro de uma rotina. */
-  private editarRotina(rotina: Rotina | null, aoFechar: () => void): void {
-    const nome = h("input", { type: "text", value: rotina?.nome ?? "", placeholder: "Processos parados", "aria-label": "Nome da rotina" });
-    const pergunta = h("textarea", { rows: "3", placeholder: "Liste os processos da minha unidade sem andamento h\u00E1 mais de 30 dias, do mais antigo para o mais novo.", "aria-label": "Pergunta" }, rotina?.pergunta ?? "");
-    const frequencia = h(
-      "select",
-      { "aria-label": "Frequ\u00EAncia" },
-      ...([["diaria", "Todo dia"], ["semanal", "Toda semana"], ["mensal", "Todo m\u00EAs"]] as Array<[string, string]>).map(([v, t]) =>
-        h("option", { value: v, ...(rotina?.frequencia === v ? { selected: true } : {}) }, t),
-      ),
-    );
-    const diaSemana = h(
-      "select",
-      { "aria-label": "Dia da semana" },
-      ...DIAS.map((d, i) => h("option", { value: String(i + 1), ...((rotina?.diaSemana ?? 1) === i + 1 ? { selected: true } : {}) }, d)),
-    );
-    const diaMes = h("input", { type: "number", min: "1", max: "28", value: String(rotina?.diaMes ?? 1), "aria-label": "Dia do m\u00EAs" });
-    const hora = h("input", { type: "time", value: rotina?.hora ?? "08:00", "aria-label": "A partir das" });
-    const status = h("div", { class: "status" });
-    const salvar = h("button", { class: "primario" }, rotina ? "Salvar" : "Adicionar");
-    const ajustar = () => {
-      diaSemana.hidden = frequencia.value !== "semanal";
-      diaMes.hidden = frequencia.value !== "mensal";
-    };
-    frequencia.addEventListener("change", ajustar);
-    const dlg = this.abrirModal({
-      titulo: rotina ? "Editar rotina" : "Nova rotina",
-      corpo: [
-        h("div", { class: "campo" }, h("label", {}, "Nome"), nome),
-        h(
-          "div",
-          { class: "campo" },
-          h("label", {}, "Pergunta"),
-          pergunta,
-          h("div", { class: "ajuda" }, "Escreva como escreveria na conversa. S\u00F3 perguntas de leitura \u2014 rotina n\u00E3o altera nada no SEI."),
-        ),
-        h(
-          "div",
-          { class: "campo" },
-          h("label", {}, "Quando"),
-          h("div", { class: "com-botao" }, frequencia, diaSemana, diaMes, hora),
-          h("div", { class: "ajuda" }, "A rotina roda na primeira vez que voc\u00EA abrir o agente depois desse hor\u00E1rio."),
-        ),
-      ],
-      acoes: [status, h("button", { onclick: () => dlg.close() }, "Cancelar"), salvar],
-    });
-    ajustar();
-    salvar.addEventListener("click", async () => {
-      const n = nome.value.trim();
-      const q = pergunta.value.trim();
-      if (!n || !q) {
-        status.className = "status erro";
-        status.textContent = "Informe o nome e a pergunta.";
-        return;
-      }
-      const nova: Rotina = {
-        id: rotina?.id ?? crypto.randomUUID(),
-        nome: n,
-        pergunta: q,
-        frequencia: frequencia.value as Rotina["frequencia"],
-        hora: hora.value || "08:00",
-        ...(frequencia.value === "semanal" ? { diaSemana: Number(diaSemana.value) } : {}),
-        ...(frequencia.value === "mensal" ? { diaMes: Math.min(28, Math.max(1, Number(diaMes.value) || 1)) } : {}),
-        ativa: rotina?.ativa ?? true,
-        alcance: rotina?.alcance ?? "leitura",
-        // Rotina nova não dispara retroativamente: conta a partir de agora.
-        ultimaEm: rotina?.ultimaEm ?? Date.now(),
-        ...(rotina?.ultimas?.length ? { ultimas: rotina.ultimas } : {}),
-      };
-      this.rotinas = rotina ? this.rotinas.map((x) => (x.id === rotina.id ? nova : x)) : [...this.rotinas, nova];
-      await guardarRotinas(this.rotinas);
-      aoFechar();
-      dlg.close();
-    });
-  }
-
   /**
    * Roda as rotinas vencidas, uma de cada vez.
    *
@@ -1673,30 +1578,148 @@ class App {
   private async rodarRotinas(): Promise<void> {
     const pendentes = vencidas(this.rotinas);
     if (!pendentes.length || !this.config.chave) return;
+    if (this.motor?.ocupado || this.rotinaEmCurso) return;
     for (let i = 0; i < 20 && !this.ponte.atual(); i += 1) await new Promise((r) => setTimeout(r, 1000));
     if (!this.ponte.atual()) return;
     for (const rotina of pendentes) {
-      const emReais = (d: number) => d * (this.cambio?.valor ?? 5.5);
-      const veredito = cabeMaisUma(this.config.limites, emReais(this.uso.custo), await gastoDeHoje());
-      if (!veredito.permite) {
-        this.adicionar({ tipo: "aviso", texto: `A rotina "${rotina.nome}" n\u00E3o rodou: ${veredito.motivo}` });
-        break;
-      }
-      this.adicionar({ tipo: "aviso", texto: `Rotina "${rotina.nome}" (${descreverFrequencia(rotina)}) \u2014 s\u00F3 leitura, sem alterar nada no SEI.` });
-      const antes = this.uso.custo;
-      let resultado = "";
-      try {
-        resultado = await this.delegar(rotina.pergunta, new AbortController().signal);
+      if (!(await this.rodarRotina(rotina, "vencida"))) break;
+    }
+  }
+
+  /**
+   * Uma execução de rotina, do aviso na conversa ao registro no histórico.
+   *
+   * Devolve `false` quando não vale seguir para a próxima — hoje, teto de
+   * gasto estourado.
+   *
+   * Leitura roda no agente auxiliar (contexto próprio, ferramentas só de
+   * leitura). Os outros alcances rodam no motor da conversa: é ele que tem a
+   * interface do painel, e é `rotinaEmCurso` que diz ao `aprovarPlano` se o
+   * plano se aprova sozinho ou se espera o usuário.
+   */
+  private async rodarRotina(rotina: Rotina, motivo: "vencida" | "manual"): Promise<boolean> {
+    const emReais = (d: number) => d * (this.cambio?.valor ?? 5.5);
+    const veredito = cabeMaisUma(this.config.limites, emReais(this.uso.custo), await gastoDeHoje());
+    if (!veredito.permite) {
+      this.adicionar({ tipo: "aviso", texto: `A rotina "${rotina.nome}" n\u00E3o rodou: ${veredito.motivo}` });
+      return false;
+    }
+    const skills = (rotina.skills ?? []).map((id) => this.skills.find((s) => s.id === id)).filter((s): s is SkillUsuario => Boolean(s));
+    const pedido = comSkills(rotina.pergunta.trim(), skills);
+    if (!pedido.trim()) {
+      this.adicionar({
+        tipo: "aviso",
+        texto: `A rotina "${rotina.nome}" n\u00E3o tem instru\u00E7\u00E3o: o texto est\u00E1 em branco e as skills escolhidas n\u00E3o existem mais.`,
+      });
+      return true;
+    }
+    this.adicionar({
+      tipo: "aviso",
+      texto: `Rotina "${rotina.nome}" (${motivo === "manual" ? "pedida por voc\u00EA" : descreverFrequencia(rotina)}) \u2014 ${descreverAlcance(rotina.alcance)}.`,
+    });
+
+    const antes = this.uso.custo;
+    const curso = { rotina, escritas: [] as string[] };
+    this.rotinaEmCurso = curso;
+    let resultado = "";
+    let ok = true;
+    try {
+      if (rotina.alcance === "leitura") {
+        resultado = await this.delegar(pedido, new AbortController().signal);
         this.adicionar({ tipo: "agente", texto: resultado });
-      } catch (e) {
-        resultado = `Falhou: ${(e as Error).message}`;
-        this.adicionar({ tipo: "erro", texto: `Rotina "${rotina.nome}": ${(e as Error).message}` });
+      } else {
+        this.motor ??= this.criarMotor();
+        await this.motor.enviar(pedido);
+        resultado = this.ultimoTextoDoAgente();
       }
-      const gasto = this.uso.custo - antes;
-      if (gasto > 0) await somarGastoDoDia(emReais(gasto));
-      this.rotinas = this.rotinas.map((r) => (r.id === rotina.id ? { ...r, ultimaEm: Date.now(), ultimoResultado: resultado.slice(0, 200) } : r));
-      await guardarRotinas(this.rotinas);
-      await this.salvarSessao();
+    } catch (e) {
+      ok = false;
+      resultado = `Falhou: ${(e as Error).message}`;
+      this.adicionar({ tipo: "erro", texto: `Rotina "${rotina.nome}": ${(e as Error).message}` });
+    } finally {
+      this.rotinaEmCurso = null;
+    }
+    const gasto = this.uso.custo - antes;
+    if (gasto > 0) await somarGastoDoDia(emReais(gasto));
+
+    // Escrita que falhou numa rotina autônoma desliga a rotina: insistir
+    // sozinha, sem ninguém olhando, é pior que parar e avisar.
+    const desligar = !ok && rotina.alcance === "autonoma" && curso.escritas.length > 0;
+    const execucao: Execucao = {
+      em: Date.now(),
+      ok,
+      resumo: resultado.slice(0, 300),
+      custo: gasto,
+      ...(curso.escritas.length ? { escritas: [...new Set(curso.escritas)] } : {}),
+    };
+    let atualizada = registrarExecucao(rotina, execucao);
+    if (desligar) atualizada = { ...atualizada, ativa: false, falhas: (rotina.falhas ?? 0) + 1 };
+    this.rotinas = this.rotinas.map((x) => (x.id === rotina.id ? atualizada : x));
+    await guardarRotinas(this.rotinas);
+    await this.salvarSessao();
+    if (desligar) void this.sincronizarAlarmes();
+    if (rotina.avisar) await this.avisarRotina(atualizada, execucao, desligar);
+    return true;
+  }
+
+  /** O último texto que o agente escreveu na conversa (o resultado da rotina). */
+  private ultimoTextoDoAgente(): string {
+    for (let i = this.transcricao.length - 1; i >= 0; i -= 1) {
+      const item = this.transcricao[i];
+      if (item.tipo === "agente") return item.texto;
+    }
+    return "";
+  }
+
+  /**
+   * Alarmes do navegador, um por rotina agendada.
+   *
+   * O alarme não executa nada: ele acorda o `background.js`, que avisa o
+   * painel (se estiver aberto) ou mostra uma notificação de pendência. No
+   * Firefox não há background, e aí a varredura periódica do painel é tudo.
+   */
+  private async sincronizarAlarmes(): Promise<void> {
+    if (!chrome.alarms?.create) return;
+    try {
+      const existentes = await chrome.alarms.getAll();
+      for (const a of existentes) if (a.name.startsWith(NOME_ALARME)) await chrome.alarms.clear(a.name);
+      for (const { nome, periodoMin } of alarmesDe(this.rotinas)) {
+        chrome.alarms.create(nome, { periodInMinutes: periodoMin, delayInMinutes: 1 });
+      }
+    } catch {
+      /* navegador sem a API de alarmes: a varredura periódica cobre */
+    }
+  }
+
+  /** Avisa que a rotina terminou. Sem permissão de notificação, não faz nada. */
+  private async avisarRotina(rotina: Rotina, execucao: Execucao, desligada: boolean): Promise<void> {
+    if (!chrome.notifications?.create) return;
+    try {
+      if (!(await chrome.permissions.contains({ permissions: ["notifications"] }))) return;
+      const { titulo, corpo } = textoDoAviso(rotina, execucao, desligada);
+      chrome.notifications.create(`rotina-fim:${rotina.id}:${execucao.em}`, {
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/menu/botpro_icon.svg"),
+        title: titulo,
+        message: corpo,
+      });
+    } catch {
+      /* sem permissão ou sem API: a rotina já rodou, o aviso é extra */
+    }
+  }
+
+  /**
+   * Pede a permissão de notificação.
+   *
+   * Tem de vir de um gesto do usuário — por isso só é chamada do clique na
+   * caixa "avisar quando terminar", nunca na abertura do painel.
+   */
+  private async pedirPermissaoDeAviso(): Promise<boolean> {
+    try {
+      if (await chrome.permissions.contains({ permissions: ["notifications"] })) return true;
+      return await chrome.permissions.request({ permissions: ["notifications"] });
+    } catch {
+      return false;
     }
   }
 
@@ -2451,9 +2474,30 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
         // botão de desfazer nasce junto com a linha da ação.
         if (t) t.item.acao = id;
       },
-      aprovarPlano: (p) => this.cartaoPlano(p),
+      aprovarPlano: (p) => {
+        const curso = this.rotinaEmCurso;
+        // Rotina que aprova sozinha decide aqui, pelas cercas de avaliarPassos.
+        // Alcance "aprovar" NÃO entra: o cartão é justamente o que ela quer.
+        if (curso && curso.rotina.alcance !== "aprovar") {
+          const veredito = avaliarPassos(
+            curso.rotina,
+            p.passos.map((passo) => ({ tool: passo.tool, efeito: passo.efeito })),
+          );
+          if (!veredito.aprovado) {
+            this.adicionar({ tipo: "aviso", texto: `Rotina "${curso.rotina.nome}": ${veredito.motivo}` });
+            return Promise.resolve({ aprovado: false, motivo: veredito.motivo });
+          }
+          for (const passo of p.passos) curso.escritas.push(passo.tool);
+          this.adicionar({
+            tipo: "aviso",
+            texto: `Rotina "${curso.rotina.nome}" vai executar sem aprova\u00E7\u00E3o: ${p.passos.map((passo) => passo.rotulo).join("; ")}`,
+          });
+          return Promise.resolve({ aprovado: true });
+        }
+        return this.cartaoPlano(p);
+      },
       progressoPlano: () => undefined,
-      consentir: (_tipo, detalhe) => this.cartaoConsentimento(detalhe),
+      consentir: (tipo, detalhe) => this.cartaoConsentimento(tipo, detalhe),
       perguntar: (pergunta, opcoes) => this.cartaoPergunta(pergunta, opcoes),
       tarefas: (lista) => {
         this.tarefas = lista;
@@ -2593,19 +2637,26 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
     });
   }
 
-  private cartaoConsentimento(detalhe: string): Promise<boolean> {
+  private cartaoConsentimento(tipo: "restrito" | "conector", detalhe: string): Promise<boolean> {
+    const titulo = tipo === "conector" ? "Enviar dados a um conector" : "Documento restrito";
+    const explicacao =
+      tipo === "conector"
+        ? "O conte\u00FAdo deste pedido vai sair do seu navegador para o servidor do conector, que \u00E9 um servi\u00E7o de terceiro (dados pessoais v\u00E3o mascarados). Permitir?"
+        : "O agente precisa enviar o conte\u00FAdo de documentos RESTRITOS ao modelo de IA (com dados pessoais mascarados). Permitir nesta conversa?";
+    const feito = tipo === "conector" ? "Envio ao conector permitido." : "Leitura de restritos permitida nesta conversa.";
+    const negado = tipo === "conector" ? "Envio ao conector n\u00E3o permitido." : "Leitura de restritos n\u00E3o permitida.";
     this.fecharBolha();
     this.pensar(false);
     return new Promise((resolver) => {
       const cartao = h(
         "div",
         { class: "cartao consentimento" },
-        h("div", { class: "cartao-topo" }, h("span", { class: "badge" }, icone("alerta", 15)), h("h4", {}, "Documento restrito")),
+        h("div", { class: "cartao-topo" }, h("span", { class: "badge" }, icone("alerta", 15)), h("h4", {}, titulo)),
         h("div", { class: "sub" }, detalhe),
-        h("div", {}, "O agente precisa enviar o conte\u00FAdo de documentos RESTRITOS ao modelo de IA (com dados pessoais mascarados). Permitir nesta conversa?"),
+        h("div", {}, explicacao),
       );
       const decidir = (sim: boolean) => {
-        this.encerrarCartao(cartao, ".acoes", sim ? "Leitura de restritos permitida nesta conversa." : "Leitura de restritos n\u00E3o permitida.", sim);
+        this.encerrarCartao(cartao, ".acoes", sim ? feito : negado, sim);
         resolver(sim);
       };
       cartao.append(h("div", { class: "acoes" }, h("button", { class: "primario", onclick: () => decidir(true) }, "Permitir"), h("button", { onclick: () => decidir(false) }, "N\u00E3o permitir")));
