@@ -2321,6 +2321,7 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
         guardarMemoria(this.memoria),
         guardarRotinas(this.rotinas),
         guardarConectores(this.conectores),
+        guardarFluxos(this.fluxos),
       ]);
     } catch {
       /* sem sincronização (Firefox sem conta, API ausente): segue só com o local */

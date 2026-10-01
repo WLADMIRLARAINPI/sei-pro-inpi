@@ -185,7 +185,9 @@ function navegadorFalso(inicial: Record<string, unknown> = {}, o: { falhar?: boo
   const dados: Record<string, unknown> = { ...inicial };
   const area = {
     get: async (chaves?: string | string[] | null) => {
-      if (!chaves) return { ...dados };
+      // Ordem alfabetica: o navegador nao promete a ordem de insercao, e o
+      // codigo nao pode depender dela.
+      if (!chaves) return Object.fromEntries(Object.keys(dados).sort().map((k) => [k, dados[k]]));
       const lista = Array.isArray(chaves) ? chaves : [chaves];
       return Object.fromEntries(lista.filter((k) => k in dados).map((k) => [k, dados[k]]));
     },
@@ -298,7 +300,9 @@ function duasAreas() {
   const sync: Record<string, unknown> = {};
   const area = (dados: Record<string, unknown>) => ({
     get: async (chaves?: string | string[] | null) => {
-      if (!chaves) return { ...dados };
+      // Ordem alfabetica: o navegador nao promete a ordem de insercao, e o
+      // codigo nao pode depender dela.
+      if (!chaves) return Object.fromEntries(Object.keys(dados).sort().map((k) => [k, dados[k]]));
       const lista = Array.isArray(chaves) ? chaves : [chaves];
       return Object.fromEntries(lista.filter((k) => k in dados).map((k) => [k, dados[k]]));
     },
@@ -352,5 +356,37 @@ export async function verificarEspelhoNosModulos(): Promise<void> {
     await guardarMemoria(Array.from({ length: 3 }, (_, i) => ({ id: `l${i}`, texto: "lembrete", quando: 1, origem: "usuario" as const })));
     await new Promise((r) => setTimeout(r, 10));
     checar("cada lembranca ganha a sua chave", Object.keys(sync).length === 3 && Array.isArray(local.agenteIA_memoria), Object.keys(sync));
+  }
+}
+
+export async function verificarEspelhoRevisao(): Promise<void> {
+  secao("espelho: a ordem da lista nao se embaralha");
+  {
+    // As chaves do sync voltam em ordem alfabetica; a lista que o usuario ve
+    // tem de continuar na ordem em que ele cadastrou.
+    navegadorFalso({
+      spro_regra_c: { ...regra("c") },
+      spro_regra_a: { ...regra("a") },
+      spro_regra_b: { ...regra("b") },
+    });
+    const r = await aplicarDoSync(ESPELHOS.regras, [regra("c"), regra("a")]);
+    checar("os locais ficam na ordem local", r.lista.slice(0, 2).map((x) => x.id).join() === "c,a", r.lista.map((x) => x.id));
+    checar("e o novo entra no fim", r.lista[2]?.id === "b", r.lista.map((x) => x.id));
+  }
+
+  secao("espelho: servico de IA diferente em cada computador");
+  {
+    // Caso real: no trabalho o usuario usa OpenRouter; em casa, Gemini com
+    // chave propria. Trazer o servico do outro computador deixaria a chave
+    // daqui invalida e o agente simplesmente pararia de responder.
+    const aqui = configCheia({ servico: "gemini", chave: "chave-do-gemini", modelo: "gemini-3-pro", url: "" });
+    const junto = configDoSync({ servico: "openrouter", modelo: "anthropic/claude-sonnet-4.5", instrucoes: "novas", dias: 90 }, aqui);
+    checar("o servico daqui e preservado", junto.servico === "gemini", junto.servico);
+    checar("o modelo daqui tambem", junto.modelo === "gemini-3-pro", junto.modelo);
+    checar("mas o resto vem do sync", junto.instrucoes === "novas" && junto.dias === 90);
+    const semChave = configDoSync({ servico: "openrouter", modelo: "m-novo" }, configCheia({ servico: "gemini", chave: "" }));
+    checar("computador novo (sem chave) aceita o servico do sync", semChave.servico === "openrouter" && semChave.modelo === "m-novo", semChave);
+    const mesmoServico = configDoSync({ servico: "gemini", modelo: "gemini-3-flash" }, aqui);
+    checar("mesmo servico: o modelo vem do sync", mesmoServico.modelo === "gemini-3-flash");
   }
 }

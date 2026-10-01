@@ -179,8 +179,22 @@ export function configParaSync(c: Config): Omit<Config, "chave"> {
   return resto;
 }
 
+/**
+ * A configuração que o `local` passa a ter, com a chave daqui.
+ *
+ * Um cuidado que o caso real exige: a chave do serviço de IA é de UM serviço.
+ * Se este computador usa Gemini com chave própria e o outro usa OpenRouter,
+ * trazer o serviço de lá deixaria a chave daqui inválida e o agente pararia de
+ * responder sem explicação. Então, quando o serviço difere e já existe chave
+ * aqui, o serviço, o endereço e os modelos daqui são preservados — o resto
+ * (instruções, limites, privacidade, cache) vem do sync como de hábito.
+ */
 export function configDoSync(bruto: Record<string, unknown>, local: Config): Config {
-  return { ...local, ...(bruto as Partial<Config>), chave: local.chave };
+  const vindo = bruto as Partial<Config>;
+  const outroServico = Boolean(vindo.servico) && vindo.servico !== local.servico;
+  const preservar: Partial<Config> =
+    outroServico && local.chave ? { servico: local.servico, url: local.url, modelo: local.modelo, modeloAuxiliar: local.modeloAuxiliar } : {};
+  return { ...local, ...vindo, ...preservar, chave: local.chave };
 }
 
 // ------------------------------------------------------------ o espelho em si
@@ -260,19 +274,32 @@ async function daArea<T>(e: Espelhada<T>, local: T[], removerAusentes: boolean):
   if (!area) return { lista: local, mudou: false };
   try {
     const tudo = await area.get(null);
-    const vindos = Object.entries(tudo).filter(([k]) => k.startsWith(e.prefixo));
-    const porId = new Map(local.map((x) => [e.id(x), x]));
+    const vindos = new Map(
+      Object.entries(tudo)
+        .filter(([k]) => k.startsWith(e.prefixo))
+        .map(([k, v]) => [k.slice(e.prefixo.length), v as Record<string, unknown>]),
+    );
     const nova: T[] = [];
-    const idsDoSync = new Set<string>();
-    for (const [chave, bruto] of vindos) {
-      const id = chave.slice(e.prefixo.length);
-      idsDoSync.add(id);
-      const junto = e.doSync(bruto as Record<string, unknown>, porId.get(id));
+    // A ORDEM é a de cá: o navegador não promete a ordem das chaves, e a lista
+    // que o usuário vê (skills, regras, rotinas) não pode se reembaralhar a
+    // cada abertura do painel. O que vem de fora entra no fim.
+    for (const item of local) {
+      const id = e.id(item);
+      const bruto = vindos.get(id);
+      if (bruto) {
+        const junto = e.doSync(bruto, item);
+        if (junto) nova.push(junto);
+      } else if (!removerAusentes) {
+        // União da primeira vez: o que ainda não subiu fica.
+        nova.push(item);
+      }
+    }
+    const conhecidos = new Set(local.map((x) => e.id(x)));
+    for (const [id, bruto] of vindos) {
+      if (conhecidos.has(id)) continue;
+      const junto = e.doSync(bruto, undefined);
       if (junto) nova.push(junto);
     }
-    // Registro que não está no sync: sai (exclusão propagada) ou fica (união
-    // da primeira vez, quando ele ainda não subiu).
-    for (const item of local) if (!idsDoSync.has(e.id(item)) && !removerAusentes) nova.push(item);
     const mudou = JSON.stringify(local) !== JSON.stringify(nova);
     return { lista: nova, mudou };
   } catch {
