@@ -2,6 +2,21 @@
 
 ## ![SEI Pro Histórico de Versões](../img/icon-historico.png) Histórico de versões
 
+### Versão 2.3
+01/10/2026
+
+O Agente de IA ganha conectores, tarefas agendadas, configuração que acompanha você entre computadores e uma blindagem contra instruções escondidas dentro de documentos.
+
+- **Novo — [conectores (MCP)](../pages/AGENTEIA.md#conectores-ferramentas-de-fora-do-sei) no Agente de IA.** O agente passa a usar ferramentas de fora do SEI: um serviço do seu órgão, uma base pública, um sistema que a sua equipe mantém. É o mesmo padrão que o Claude e outros assistentes usam. Você informa o endereço e, se houver, o token; o SEI Pro busca a lista de ferramentas e **cada uma recebe a permissão que você der**: *sempre permitir*, *requer aprovação* (o padrão) ou *bloqueado*. Em *requer aprovação*, aparece um cartão com o conector, a ferramenta e **exatamente o que vai ser enviado**, antes de qualquer coisa sair do navegador. Dados pessoais vão mascarados, como nas conversas, e o token fica só neste computador
+- **As [rotinas](../pages/AGENTEIA.md#rotinas) deixaram de ser só perguntas e viraram tarefas.** Agora a rotina pode seguir **skills** além do texto que você escreve, roda também **a cada hora**, **em dias úteis** ou **quando você mandar**, guarda as **10 últimas execuções** com data e custo, aceita um **teto de gasto por execução** e pode **avisar por notificação do navegador** quando terminar. No Chrome, o navegador lembra você na hora marcada mesmo com o painel fechado
+- Ainda nas rotinas: elas podem, se você quiser, **propor alterações no SEI** — esperando a sua aprovação — ou **executá-las sozinhas**, apenas nas ferramentas que você autorizar, uma a uma. Exclusão, cancelamento e assinatura **nunca** são feitos por rotina, nem com autorização; a rotina que falhar ao alterar o SEI se desliga sozinha e avisa o motivo
+- **Novo — a configuração do Agente acompanha a sua conta do navegador.** Instruções, regras da unidade, memória, rotinas, conectores, fluxos e os endereços das suas skills aparecem nos seus outros computadores, sem cadastrar duas vezes. Ficam **só neste computador**: a chave do serviço de IA, os tokens dos conectores, o texto das skills coladas à mão (as que vêm do GitHub viajam pelo endereço) e as conversas
+- **Novo — proteção contra instruções escondidas dentro de documentos.** Em outubro de 2026 o STF multou um advogado que escondeu, no cabeçalho de uma petição, um comando dirigido à inteligência artificial que lê os autos. O SEI Pro passa a **enxergar o que o documento esconde da tela** — letra branca, fonte de tamanho zero, texto fora da área visível —, a marcar trechos redigidos como ordem a sistemas de IA e a remover caracteres invisíveis. Nada é apagado do documento: o conteúdo é preservado e **apontado**, com uma verificação de integridade na conversa dizendo onde está. E se o agente propuser alguma alteração depois de ler um documento assim, o cartão de aprovação avisa. A ideia partiu de uma sugestão de *Marcus Tavares* (SOG/ANTAQ)
+- **[Estilo Avançado](../pages/ESTILOAVANCADO.md): o primeiro campo do formulário voltou a responder ao clique.** Com o Estilo Avançado ligado, a barra de *Salvar/Voltar* ficava por cima do começo do formulário — em *Registrar Documento Externo*, o campo *Tipo do Documento* simplesmente não abria. Agora a barra deixa o clique passar para o campo que está embaixo; só os botões dela recebem clique
+- **As configurações do SEI Pro avisam de verdade quando não conseguem salvar.** Se o navegador recusa a gravação — por espaço ou por excesso de gravações seguidas —, a página dizia "salvo com sucesso" mesmo assim. Agora o erro aparece, e a página avisa antes de passar do espaço que o navegador reserva
+- Ainda nas configurações: um campo obrigatório em branco numa Base de Dados **não descarta mais as bases seguintes** em silêncio, e a configuração alterada em outro computador passa a valer sem precisar recarregar a página
+- **Menos credencial guardada na página do SEI.** A extensão copiava para o armazenamento do site todas as credenciais da *Base de Dados* — inclusive chaves de API que ficavam legíveis para qualquer script da página e sobreviviam à desinstalação. Agora só vai para lá o que de fato é usado ali: as opções marcadas e o perfil do gestor de atividades
+
 ### Versão 2.2.5
 29/09/2026
 
