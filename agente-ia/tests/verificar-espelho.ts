@@ -5,7 +5,16 @@
  * cota, e o que chega de outro computador não apaga o que só existe aqui.
  */
 
-import { CHAVE_CONFIG_SYNC, configDoSync, configParaSync, ESPELHOS } from "../src/painel/espelho";
+import {
+  aplicarDoSync,
+  CHAVE_CONFIG_SYNC,
+  configDoSync,
+  configParaSync,
+  espelhar,
+  espelharConfig,
+  ESPELHOS,
+  unirNaPrimeiraVez,
+} from "../src/painel/espelho";
 import type { Conector } from "../src/mcp/conectores";
 import type { Config } from "../src/painel/main";
 import type { Regra } from "../src/painel/regras";
@@ -158,5 +167,122 @@ export function verificarEspelho(): void {
     checar("todo prefixo comeca com spro_", prefixos.every((p) => p.startsWith("spro_")), prefixos);
     checar("nenhum prefixo e prefixo de outro", prefixos.every((p) => prefixos.filter((q) => q.startsWith(p)).length === 1), prefixos);
     checar("o id da skill e o id do registro", ESPELHOS.skills.id(skill()) === "s1");
+  }
+}
+
+/**
+ * `chrome.storage` de mentira: só o que o espelho usa.
+ *
+ * `bytes` finge o espaço já ocupado (para provar o guarda-chuva) e `falhar`
+ * finge a recusa do navegador por cota.
+ */
+function navegadorFalso(inicial: Record<string, unknown> = {}, o: { falhar?: boolean; bytes?: number } = {}) {
+  const dados: Record<string, unknown> = { ...inicial };
+  const area = {
+    get: async (chaves?: string | string[] | null) => {
+      if (!chaves) return { ...dados };
+      const lista = Array.isArray(chaves) ? chaves : [chaves];
+      return Object.fromEntries(lista.filter((k) => k in dados).map((k) => [k, dados[k]]));
+    },
+    set: async (itens: Record<string, unknown>) => {
+      if (o.falhar) throw new Error("QUOTA_BYTES quota exceeded");
+      Object.assign(dados, itens);
+    },
+    remove: async (chaves: string | string[]) => {
+      for (const k of Array.isArray(chaves) ? chaves : [chaves]) delete dados[k];
+    },
+    getBytesInUse: async () => o.bytes ?? JSON.stringify(dados).length,
+  };
+  (globalThis as { chrome?: unknown }).chrome = { storage: { sync: area, local: area } };
+  return dados;
+}
+
+export async function verificarEspelhoSync(): Promise<void> {
+  secao("espelho: subir");
+  {
+    const dados = navegadorFalso();
+    const r = await espelhar(ESPELHOS.regras, [regra("a"), regra("b")]);
+    checar("gravou uma chave por registro", r.gravados === 2 && Object.keys(dados).length === 2, Object.keys(dados));
+    checar("a chave usa o prefixo e o id", "spro_regra_a" in dados, Object.keys(dados));
+    const denovo = await espelhar(ESPELHOS.regras, [regra("a"), regra("b")]);
+    checar("nada mudou: nao gasta escrita", denovo.gravados === 0, denovo);
+    const comUmaSo = await espelhar(ESPELHOS.regras, [regra("a")]);
+    checar("registro que saiu da lista tem a chave removida", !("spro_regra_b" in dados) && comUmaSo.removidos === 1, Object.keys(dados));
+  }
+  {
+    const dados = navegadorFalso();
+    await espelhar(ESPELHOS.skills, [skill(), skill({ id: "s2", colecao: "c1" })]);
+    checar("skill de colecao nao ocupa chave no sync", Object.keys(dados).join() === "spro_skill_s1", Object.keys(dados));
+  }
+
+  secao("espelho: aplicar de volta");
+  {
+    navegadorFalso({ spro_regra_z: { id: "z", nome: "Do outro computador", ativa: true, efeito: "avisar", ferramentas: [], mensagem: "m" } });
+    const r = await aplicarDoSync(ESPELHOS.regras, [regra("a")]);
+    checar("registro novo do sync entra", r.lista.some((x) => x.id === "z"), r.lista);
+    checar("registro local que nao esta no sync SAI (exclusao propagada)", !r.lista.some((x) => x.id === "a"), r.lista);
+    checar("avisa que mudou", r.mudou);
+    const igual = await aplicarDoSync(ESPELHOS.regras, r.lista);
+    checar("aplicar de novo nao muda nada", !igual.mudou);
+  }
+  {
+    // O caso que mais importa: o que chega não pode levar o texto embora.
+    navegadorFalso({ spro_skill_s1: { id: "s1", nome: "Despacho renomeado", slug: "despacho", descricao: "d", url: "https://github.com/o/r/blob/main/d.md", sincronizar: true } });
+    const r = await aplicarDoSync(ESPELHOS.skills, [skill({ texto: "o texto que esta aqui" })]);
+    checar("o texto local sobrevive a chegada do sync", r.lista[0].texto === "o texto que esta aqui", r.lista[0]);
+    checar("e o nome foi atualizado", r.lista[0].nome === "Despacho renomeado");
+  }
+
+  secao("espelho: primeira vez (uniao por id)");
+  {
+    const dados = navegadorFalso({ spro_regra_z: { id: "z", nome: "Do outro", ativa: true, efeito: "avisar", ferramentas: [], mensagem: "m" } });
+    const lista = await unirNaPrimeiraVez(ESPELHOS.regras, [regra("a")]);
+    checar("o que so existe aqui fica", lista.some((x) => x.id === "a"), lista);
+    checar("o que so existe no sync baixa", lista.some((x) => x.id === "z"), lista);
+    checar("e o que estava aqui sobe para o sync", "spro_regra_a" in dados, Object.keys(dados));
+  }
+
+  secao("espelho: cota");
+  {
+    navegadorFalso({}, { bytes: 90_000 });
+    const r = await espelhar(ESPELHOS.regras, [regra("a")]);
+    checar("acima do teto, nao sobe", r.gravados === 0, r);
+    checar("e explica por que", /espaço/i.test(r.aviso ?? ""), r.aviso);
+  }
+  {
+    const dados = navegadorFalso({}, { falhar: true });
+    const r = await espelhar(ESPELHOS.regras, [regra("a")]);
+    checar("recusa do navegador nao lanca", r.gravados === 0 && Boolean(r.aviso), r);
+    checar("e nada foi gravado pela metade", Object.keys(dados).length === 0);
+  }
+  {
+    (globalThis as { chrome?: unknown }).chrome = { storage: {} };
+    const r = await espelhar(ESPELHOS.regras, [regra("a")]);
+    checar("sem storage.sync, segue em silencio", r.gravados === 0 && r.removidos === 0 && !r.aviso, r);
+    const v = await aplicarDoSync(ESPELHOS.regras, [regra("a")]);
+    checar("e aplicar de volta devolve o local intacto", v.lista.length === 1 && !v.mudou, v);
+  }
+
+  secao("espelho: a cota dos cenarios medidos na especificacao");
+  {
+    const dados = navegadorFalso();
+    const nLembrancas = 30;
+    await espelharConfig(configCheia());
+    await espelhar(ESPELHOS.skills, Array.from({ length: 15 }, (_, i) => skill({ id: `s${i}` })));
+    await espelhar(ESPELHOS.regras, Array.from({ length: 15 }, (_, i) => regra(`r${i}`)));
+    await espelhar(
+      ESPELHOS.memoria,
+      Array.from({ length: nLembrancas }, (_, i) => ({ id: `l${i}`, texto: "m".repeat(240), quando: 1, origem: "agente" as const })),
+    );
+    await espelhar(ESPELHOS.rotinas, Array.from({ length: 8 }, (_, i) => rotina({ id: `ro${i}` })));
+    await espelhar(
+      ESPELHOS.conectores,
+      Array.from({ length: 3 }, (_, i) => conector({ id: `c${i}`, permissoes: Object.fromEntries(Array.from({ length: 40 }, (_, j) => [`f${j}`, "sempre" as const])) })),
+    );
+    const bytes = Object.entries(dados).reduce((n, [k, v]) => n + k.length + JSON.stringify(v).length, 0);
+    const maior = Math.max(...Object.entries(dados).map(([k, v]) => k.length + JSON.stringify(v).length));
+    checar(`cenario pesado cabe nos 100 KB (${bytes} bytes)`, bytes < 102_400, bytes);
+    checar(`nenhum item passa de 8 KB (maior: ${maior})`, maior < 8_192, maior);
+    checar(`menos de 512 itens (${Object.keys(dados).length})`, Object.keys(dados).length < 512);
   }
 }

@@ -182,3 +182,153 @@ export function configParaSync(c: Config): Omit<Config, "chave"> {
 export function configDoSync(bruto: Record<string, unknown>, local: Config): Config {
   return { ...local, ...(bruto as Partial<Config>), chave: local.chave };
 }
+
+// ------------------------------------------------------------ o espelho em si
+
+/** Onde avisar o usuário quando a cota não permitir subir (ver `aoAvisar`). */
+let ouvinteDeAviso: ((texto: string) => void) | null = null;
+
+/** O painel registra aqui para mostrar o aviso da cota uma vez por sessão. */
+export function aoAvisar(f: (texto: string) => void): void {
+  ouvinteDeAviso = f;
+}
+
+const AVISO_COTA =
+  "A configuração passou do espaço que o navegador reserva para sincronizar. O que já está sincronizado continua valendo; o que vier agora fica só neste computador.";
+
+/** A área de sincronização, ou `null` quando o navegador não a oferece. */
+function areaSync(): chrome.storage.SyncStorageArea | null {
+  try {
+    return chrome.storage?.sync ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export interface ResultadoEspelho {
+  gravados: number;
+  removidos: number;
+  /** Mensagem para o usuário quando não foi possível subir. */
+  aviso?: string;
+}
+
+/**
+ * Sobe a lista para o `sync`: uma chave por registro.
+ *
+ * Grava só o que mudou (escrita no `sync` é limitada a 1.800 por hora) e
+ * remove as chaves do prefixo que não correspondem mais a nenhum registro —
+ * é assim que a exclusão feita aqui chega ao outro computador.
+ *
+ * Nunca lança: a gravação no `local` já aconteceu, e o espelho que falha é um
+ * aviso, não um erro.
+ */
+export async function espelhar<T>(e: Espelhada<T>, lista: T[]): Promise<ResultadoEspelho> {
+  const area = areaSync();
+  if (!area) return { gravados: 0, removidos: 0 };
+  try {
+    const desejado = new Map<string, Record<string, unknown>>();
+    for (const item of lista) {
+      const recorte = e.paraSync(item);
+      if (recorte) desejado.set(`${e.prefixo}${e.id(item)}`, recorte);
+    }
+    const atual = await area.get(null);
+    const minhas = Object.keys(atual).filter((k) => k.startsWith(e.prefixo));
+    const sobrando = minhas.filter((k) => !desejado.has(k));
+    const mudados = Object.fromEntries([...desejado].filter(([k, v]) => JSON.stringify(atual[k]) !== JSON.stringify(v)));
+
+    if (sobrando.length) await area.remove(sobrando);
+    if (!Object.keys(mudados).length) return { gravados: 0, removidos: sobrando.length };
+
+    // Guarda-chuva: perto do teto, para de subir em vez de deixar o navegador
+    // recusar a gravação em silêncio.
+    const usados = await area.getBytesInUse(null).catch(() => 0);
+    if (usados > TETO_SYNC) {
+      ouvinteDeAviso?.(AVISO_COTA);
+      return { gravados: 0, removidos: sobrando.length, aviso: AVISO_COTA };
+    }
+    await area.set(mudados);
+    return { gravados: Object.keys(mudados).length, removidos: sobrando.length };
+  } catch {
+    ouvinteDeAviso?.(AVISO_COTA);
+    return { gravados: 0, removidos: 0, aviso: AVISO_COTA };
+  }
+}
+
+/** Lê as chaves do prefixo e devolve a lista que o `local` deve passar a ter. */
+async function daArea<T>(e: Espelhada<T>, local: T[], removerAusentes: boolean): Promise<{ lista: T[]; mudou: boolean }> {
+  const area = areaSync();
+  if (!area) return { lista: local, mudou: false };
+  try {
+    const tudo = await area.get(null);
+    const vindos = Object.entries(tudo).filter(([k]) => k.startsWith(e.prefixo));
+    const porId = new Map(local.map((x) => [e.id(x), x]));
+    const nova: T[] = [];
+    const idsDoSync = new Set<string>();
+    for (const [chave, bruto] of vindos) {
+      const id = chave.slice(e.prefixo.length);
+      idsDoSync.add(id);
+      const junto = e.doSync(bruto as Record<string, unknown>, porId.get(id));
+      if (junto) nova.push(junto);
+    }
+    // Registro que não está no sync: sai (exclusão propagada) ou fica (união
+    // da primeira vez, quando ele ainda não subiu).
+    for (const item of local) if (!idsDoSync.has(e.id(item)) && !removerAusentes) nova.push(item);
+    const mudou = JSON.stringify(local) !== JSON.stringify(nova);
+    return { lista: nova, mudou };
+  } catch {
+    return { lista: local, mudou: false };
+  }
+}
+
+/** O que o `local` passa a ter depois de aplicar o `sync` (exclusão inclusa). */
+export function aplicarDoSync<T>(e: Espelhada<T>, local: T[]): Promise<{ lista: T[]; mudou: boolean }> {
+  return daArea(e, local, true);
+}
+
+/**
+ * Primeira execução neste navegador: união por id.
+ *
+ * Ninguém tem chaves `spro_*` antes desta versão, e os registros não têm data
+ * de alteração — então o que existe só aqui sobe, o que existe só lá baixa, e
+ * o que existe nos dois fica com a versão do `sync`. É o único momento em que
+ * a ausência no `sync` NÃO significa exclusão.
+ */
+export async function unirNaPrimeiraVez<T>(e: Espelhada<T>, local: T[]): Promise<T[]> {
+  const { lista } = await daArea(e, local, false);
+  await espelhar(e, lista);
+  return lista;
+}
+
+export async function espelharConfig(c: Config): Promise<ResultadoEspelho> {
+  const area = areaSync();
+  if (!area) return { gravados: 0, removidos: 0 };
+  try {
+    const recorte = configParaSync(c);
+    const atual = (await area.get(CHAVE_CONFIG_SYNC))[CHAVE_CONFIG_SYNC];
+    if (JSON.stringify(atual) === JSON.stringify(recorte)) return { gravados: 0, removidos: 0 };
+    const usados = await area.getBytesInUse(null).catch(() => 0);
+    if (usados > TETO_SYNC) {
+      ouvinteDeAviso?.(AVISO_COTA);
+      return { gravados: 0, removidos: 0, aviso: AVISO_COTA };
+    }
+    await area.set({ [CHAVE_CONFIG_SYNC]: recorte });
+    return { gravados: 1, removidos: 0 };
+  } catch {
+    ouvinteDeAviso?.(AVISO_COTA);
+    return { gravados: 0, removidos: 0, aviso: AVISO_COTA };
+  }
+}
+
+/** A configuração que o `local` deve passar a ter, com a chave daqui. */
+export async function aplicarConfigDoSync(local: Config): Promise<{ config: Config; mudou: boolean }> {
+  const area = areaSync();
+  if (!area) return { config: local, mudou: false };
+  try {
+    const bruto = (await area.get(CHAVE_CONFIG_SYNC))[CHAVE_CONFIG_SYNC] as Record<string, unknown> | undefined;
+    if (!bruto) return { config: local, mudou: false };
+    const config = configDoSync(bruto, local);
+    return { config, mudou: JSON.stringify(config) !== JSON.stringify(local) };
+  } catch {
+    return { config: local, mudou: false };
+  }
+}
