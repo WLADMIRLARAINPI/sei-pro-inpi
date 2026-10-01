@@ -21,10 +21,11 @@ import type { Regra } from "../src/painel/regras";
 import type { Rotina } from "../src/painel/rotinas";
 import type { SkillUsuario } from "../src/painel/skills";
 import { guardarConectores } from "../src/mcp/conectores";
+import { guardarFluxos } from "../src/fluxos/modelo";
 import { guardarMemoria } from "../src/painel/memoria";
 import { guardarRegras } from "../src/painel/regras";
 import { guardarRotinas } from "../src/painel/rotinas";
-import { guardarSkills } from "../src/painel/skills";
+import { guardarColecoes, guardarSkills } from "../src/painel/skills";
 import { checar, secao } from "./util";
 
 const skill = (s: Partial<SkillUsuario> = {}): SkillUsuario => ({
@@ -350,6 +351,19 @@ export async function verificarEspelhoNosModulos(): Promise<void> {
     await guardarRotinas([rotina()]);
     await new Promise((r) => setTimeout(r, 10));
     checar("o historico da rotina nao viaja", !JSON.stringify(sync).includes("oito processos"), JSON.stringify(sync).slice(0, 160));
+  }
+  {
+    // Fluxos e colecoes moram em outra pasta e importam o espelho de `painel/`:
+    // um ciclo de importacao quebraria aqui, e nao no build.
+    const { local, sync } = duasAreas();
+    await guardarFluxos([{ id: "f1", nome: "Contrato", ativo: true, aplicaSe: {}, etapas: [], origem: "manual", atualizadoEm: 1, modelos: [{ protocolo: "50300.018905/2018-67", quando: 1 }] } as never]);
+    await guardarColecoes([{ id: "c1", nome: "Skills da SOG", url: "https://github.com/o/r/tree/main/skills", sincronizar: true, verificadaEm: 9, quantas: 8 }]);
+    await new Promise((r) => setTimeout(r, 10));
+    checar("o fluxo viaja", "spro_fluxo_f1" in sync, Object.keys(sync));
+    checar("mas o processo modelo dele nao", !JSON.stringify(sync).includes("50300.018905"), JSON.stringify(sync).slice(0, 140));
+    checar("a colecao viaja pelo endereco", JSON.stringify(sync).includes("tree/main/skills"));
+    checar("sem o que e cache da colecao", !JSON.stringify(sync).includes("quantas"), JSON.stringify(sync).slice(0, 200));
+    checar("e tudo continua no local", Array.isArray(local.agenteIA_fluxos) && Array.isArray(local.agenteIA_colecoes));
   }
   {
     const { local, sync } = duasAreas();
