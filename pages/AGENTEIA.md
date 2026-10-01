@@ -166,14 +166,45 @@ Quando o pedido implica mexer no processo, o agente **não executa**: ele monta 
 
 ### Rotinas
 
-Há perguntas que valem toda semana e ninguém lembra de fazer: *"processos parados há mais de 30 dias"*, *"documentos sem assinatura na unidade"*. Em **Configuração → Rotinas** você cadastra a pergunta e quando ela deve rodar (todo dia, toda semana num dia, todo mês num dia, a partir de um horário).
+Há trabalho que vale toda semana e ninguém lembra de fazer: *"processos parados há mais de 30 dias"*, *"documentos sem assinatura na unidade"*. Em **Configuração → Conversas e rotinas → Rotinas** você cadastra o que deve ser feito e quando.
 
-Duas coisas para entender antes de usar:
+| Campo | O que é |
+| ----- | ------- |
+| **Nome** | Como a rotina aparece na lista e na notificação |
+| **Instruções** | O pedido, escrito como você escreveria na conversa — e/ou **skills** já cadastradas, que entram junto |
+| **Quando** | Quando eu mandar, a cada hora, todo dia, dias úteis, toda semana (num dia) ou todo mês (num dia), a partir de um horário |
+| **O que ela pode fazer** | Só leitura; pode propor e esperar a sua aprovação; ou alterar sem perguntar |
+| **Avisar quando terminar** | Notificação do navegador com o resultado em uma linha |
+| **Teto por execução** | Limite de gasto só desta rotina, além dos limites gerais |
 
-* **Rotina é só leitura.** Ela nunca altera nada no SEI — o que roda sem alguém olhando não escreve;
-* **Ela roda quando você abre o agente** depois do horário marcado, não no horário exato. A extensão vive no seu navegador, com a sua sessão do SEI; não existe servidor do SEI Pro guardando esse acesso para agir de madrugada — e é bom que não exista.
+**Dias úteis** é de segunda a sexta — **feriado não é considerado**, porque a extensão não tem o calendário de cada órgão. **Quando eu mandar** não tem horário: ela roda no botão **Rodar agora**, que também existe em qualquer rotina.
 
-Quem ficou uma semana fora volta com **uma** execução pendente, não sete: o que interessa é a foto de agora. O resultado aparece na conversa assim que você abre o painel, e o gasto respeita o teto que você definiu.
+#### Onde ela roda, e quando
+
+A rotina roda **no seu navegador, com a sua sessão do SEI**, e só com o agente aberto. Não existe servidor do SEI Pro guardando esse acesso para agir de madrugada — e é bom que não exista.
+
+* No **Chrome**, o navegador avisa na hora marcada mesmo com o painel fechado: aparece uma notificação de pendência, e clicar nela abre o agente e roda a rotina. Com o painel já aberto, ela roda sozinha;
+* no **Firefox**, ela roda quando a barra lateral do agente está aberta.
+
+Quem ficou uma semana fora volta com **uma** execução pendente, não sete: o que interessa é a foto de agora. As **10 últimas execuções** de cada rotina ficam registradas, com data, custo e o que foi alterado.
+
+#### O que uma rotina pode alterar no SEI
+
+Por padrão, nada: **só leitura**. Os outros dois alcances existem para quem precisa deles, com cercas:
+
+| Alcance | O que acontece |
+| ------- | -------------- |
+| **Só leitura** | Ela consulta e responde. Nunca altera nada |
+| **Pode propor, eu aprovo** | Ela monta o plano e **para**, esperando o seu clique no cartão de aprovação |
+| **Altera sem me perguntar** | Ela executa — apenas as ferramentas que você escolher, uma por uma |
+
+No alcance autônomo:
+
+* **exclusão, cancelamento e assinatura nunca** acontecem, mesmo que você tente autorizá-las: elas não aparecem na lista, e a trava se repete na hora de executar;
+* ferramenta fora da lista reprova o plano inteiro, e as **regras da unidade** continuam valendo;
+* cada alteração entra na conversa e no **desfazer**, como qualquer escrita;
+* o aviso por notificação é **obrigatório** — você tem de saber que algo foi escrito;
+* na **primeira falha** ao alterar o SEI a rotina se desliga sozinha, com o motivo na lista. Insistir sem ninguém olhando é pior que parar.
 
 ### Memória da unidade
 
