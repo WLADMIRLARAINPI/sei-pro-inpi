@@ -45,11 +45,45 @@ const CHAVE = "agenteIA_mcp";
 export const MAX_CONECTORES = 20;
 export const MAX_TOOLS = 200;
 
+const PERMISSOES: Permissao[] = ["sempre", "aprovar", "bloqueado"];
+
+const permissaoValida = (v: unknown): Permissao => (PERMISSOES.includes(v as Permissao) ? (v as Permissao) : "aprovar");
+
+/**
+ * Lê um conector guardado, defendendo-se do que estiver lá.
+ *
+ * O painel resolve permissão a cada chamada; um conector gravado por outra
+ * versão, ou corrompido, não pode derrubar a conversa por falta de um campo.
+ * Permissão desconhecida vira "requer aprovação" — na dúvida, pergunta-se.
+ */
+export function normalizarConector(bruto: unknown): Conector | null {
+  const c = bruto as Partial<Conector>;
+  if (!c || typeof c !== "object" || !c.id || !c.nome || !c.url) return null;
+  const permissoes: Record<string, Permissao> = {};
+  for (const [k, v] of Object.entries(c.permissoes ?? {})) permissoes[k] = permissaoValida(v);
+  const auth: Auth =
+    c.auth?.tipo === "token" || c.auth?.tipo === "oauth" ? (c.auth as Auth) : { tipo: "nenhuma" };
+  return {
+    id: c.id,
+    nome: c.nome,
+    url: c.url,
+    ativo: c.ativo !== false,
+    auth,
+    padrao: permissaoValida(c.padrao),
+    permissoes,
+    ...(Array.isArray(c.tools) ? { tools: c.tools.filter((t) => t && typeof t.nome === "string") } : { tools: [] }),
+    ...(c.servidor ? { servidor: c.servidor } : {}),
+    ...(c.verificadoEm ? { verificadoEm: c.verificadoEm } : {}),
+    ...(c.erro ? { erro: c.erro } : {}),
+    ...(c.consentido ? { consentido: true } : {}),
+  };
+}
+
 export async function listarConectores(): Promise<Conector[]> {
   try {
     const v = await chrome.storage.local.get(CHAVE);
-    const lista = (v?.[CHAVE] as Conector[]) ?? [];
-    return Array.isArray(lista) ? lista : [];
+    const lista = (v?.[CHAVE] as unknown[]) ?? [];
+    return Array.isArray(lista) ? lista.map(normalizarConector).filter((c): c is Conector => c !== null) : [];
   } catch {
     return [];
   }
@@ -73,7 +107,7 @@ function identificador(texto: string): string {
 const chave = (texto: string): string => identificador(texto);
 
 export function permissaoDe(c: Conector, tool: string): Permissao {
-  return c.permissoes[tool] ?? c.padrao;
+  return c.permissoes?.[tool] ?? c.padrao ?? "aprovar";
 }
 
 /** As ferramentas que o modelo pode ver. */

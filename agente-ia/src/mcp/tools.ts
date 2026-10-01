@@ -106,7 +106,14 @@ export function toolsMcp(o: OpcoesToolsMcp): DefTool[] {
       // que a escrita no SEI leve o valor real. O que sai para um terceiro
       // tem de voltar a ser rótulo.
       const brutos = (a.argumentos ?? {}) as Record<string, unknown>;
-      const args = JSON.parse(ctx.anonimizar(JSON.stringify(brutos))) as Record<string, unknown>;
+      let args: Record<string, unknown>;
+      try {
+        args = JSON.parse(ctx.anonimizar(JSON.stringify(brutos))) as Record<string, unknown>;
+      } catch {
+        // Nada sai do navegador sem passar pelo mascaramento: se ele falhou,
+        // a chamada não acontece.
+        return erro("Não foi possível mascarar os dados pessoais destes argumentos, então nada foi enviado. Simplifique os parâmetros e tente de novo.");
+      }
 
       // Primeira vez neste conector: o usuário precisa saber que o conteúdo sai.
       if (!c.consentido) {

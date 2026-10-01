@@ -31,6 +31,7 @@ import {
   alarmesDe,
   avaliarPassos,
   descreverAlcance,
+  estourouTeto,
   descreverFrequencia,
   guardarRotinas,
   listarRotinas,
@@ -209,6 +210,15 @@ class App {
    * de abrir o cartão. Fora de rotina, vale `null` e tudo segue como sempre.
    */
   private rotinaEmCurso: { rotina: Rotina; escritas: string[] } | null = null;
+
+  /**
+   * Vigia do teto de gasto da rotina em curso.
+   *
+   * O teto é por execução, e o custo só se conhece rodada a rodada: a conta é
+   * feita a cada atualização de uso e, se estourar, a rodada é interrompida no
+   * meio em vez de seguir gastando sem ninguém olhando.
+   */
+  private tetoDaRotina: { rotina: Rotina; base: number; parar: AbortController; avisado: boolean } | null = null;
 
   /** Fluxos mapeados no Estúdio de Fluxo, e o que o usuário mandou não sugerir. */
   private fluxos: Fluxo[] = [];
@@ -623,7 +633,22 @@ class App {
   }
 
   /** Medidor do cabeçalho: valor e, no title, de onde ele veio. */
+  /** Interrompe a rotina que passou do próprio teto de gasto. */
+  private conferirTetoDaRotina(): void {
+    const vigia = this.tetoDaRotina;
+    if (!vigia || vigia.avisado) return;
+    const gasto = this.uso.custo - vigia.base;
+    if (!estourouTeto(vigia.rotina, gasto, this.cambio?.valor ?? 5.5)) return;
+    vigia.avisado = true;
+    vigia.parar.abort();
+    this.adicionar({
+      tipo: "aviso",
+      texto: `A rotina "${vigia.rotina.nome}" passou do teto de R$ ${vigia.rotina.teto?.toFixed(2).replace(".", ",")} por execu\u00E7\u00E3o e foi interrompida.`,
+    });
+  }
+
   private mostrarUso(): void {
+    this.conferirTetoDaRotina();
     if (!this.elCusto) return;
     const uso = this.arquivada?.uso ?? this.uso;
     this.elCusto.textContent = formatarUso(uso, this.cambio);
@@ -1618,33 +1643,52 @@ class App {
       texto: `Rotina "${rotina.nome}" (${motivo === "manual" ? "pedida por voc\u00EA" : descreverFrequencia(rotina)}) \u2014 ${descreverAlcance(rotina.alcance)}.`,
     });
 
+    // Alcance que escreve usa o motor da conversa; se ele está no meio de um
+    // pedido do usuário, a rotina espera a próxima oportunidade.
+    if (rotina.alcance !== "leitura" && this.motor?.ocupado) {
+      this.adicionar({ tipo: "aviso", texto: `A rotina "${rotina.nome}" espera: o agente est\u00E1 trabalhando no seu pedido.` });
+      return true;
+    }
+
     const antes = this.uso.custo;
     const curso = { rotina, escritas: [] as string[] };
     this.rotinaEmCurso = curso;
+    const parar = new AbortController();
+    this.tetoDaRotina = { rotina, base: antes, parar, avisado: false };
     let resultado = "";
     let ok = true;
+    // Falha na EXECUÇÃO, que é o que desliga uma rotina autônoma. Estourar o
+    // teto de gasto também marca a execução como malsucedida, mas não é
+    // defeito de escrita e não desliga nada.
+    let falhouExecutando = false;
     try {
       if (rotina.alcance === "leitura") {
-        resultado = await this.delegar(pedido, new AbortController().signal);
+        resultado = await this.delegar(pedido, parar.signal);
         this.adicionar({ tipo: "agente", texto: resultado });
       } else {
         this.motor ??= this.criarMotor();
-        await this.motor.enviar(pedido);
+        await this.motor.enviar(pedido, parar.signal);
         resultado = this.ultimoTextoDoAgente();
       }
     } catch (e) {
       ok = false;
+      falhouExecutando = true;
       resultado = `Falhou: ${(e as Error).message}`;
       this.adicionar({ tipo: "erro", texto: `Rotina "${rotina.nome}": ${(e as Error).message}` });
     } finally {
       this.rotinaEmCurso = null;
+      this.tetoDaRotina = null;
     }
     const gasto = this.uso.custo - antes;
     if (gasto > 0) await somarGastoDoDia(emReais(gasto));
+    if (estourouTeto(rotina, gasto, this.cambio?.valor ?? 5.5)) {
+      ok = false;
+      resultado = `Interrompida: passou do teto de R$ ${rotina.teto?.toFixed(2).replace(".", ",")} por execução.`;
+    }
 
     // Escrita que falhou numa rotina autônoma desliga a rotina: insistir
     // sozinha, sem ninguém olhando, é pior que parar e avisar.
-    const desligar = !ok && rotina.alcance === "autonoma" && curso.escritas.length > 0;
+    const desligar = falhouExecutando && rotina.alcance === "autonoma" && curso.escritas.length > 0;
     const execucao: Execucao = {
       em: Date.now(),
       ok,

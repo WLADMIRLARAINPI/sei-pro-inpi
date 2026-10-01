@@ -290,3 +290,15 @@ export function textoDoAviso(r: Rotina, e: Execucao, desligada: boolean): { titu
       : `Falhou: ${primeira.slice(0, 160) || "sem detalhe"}`;
   return { titulo: `Rotina: ${r.nome}`, corpo };
 }
+
+/**
+ * O gasto desta execução passou do teto da rotina?
+ *
+ * O teto é em reais (é assim que o usuário pensa) e o custo vem em dólares do
+ * provedor, então a cotação do dia entra na conta. Sem teto, nunca estoura —
+ * continuam valendo os limites gerais por conversa e por dia.
+ */
+export function estourouTeto(r: Rotina, gastoDolares: number, cotacao: number): boolean {
+  if (!r.teto || r.teto <= 0) return false;
+  return gastoDolares * cotacao > r.teto;
+}

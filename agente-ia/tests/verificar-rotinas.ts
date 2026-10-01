@@ -7,6 +7,7 @@
 
 import {
   alarmesDe,
+  estourouTeto,
   avaliarPassos,
   descreverFrequencia,
   MAX_EXECUCOES,
@@ -179,4 +180,13 @@ export function verificarRotinas(): void {
   checar("rotina desligada por falha de escrita avisa isso", /desligada/.test(desligada.corpo), desligada);
   const vazia = textoDoAviso(rotina(), { em: 1, ok: true, resumo: "   ", custo: 0 }, false);
   checar("resultado vazio ainda rende um aviso legivel", vazia.corpo.length > 0, vazia);
+
+  secao("rotinas: teto por execucao");
+  const comTeto = rotina({ teto: 1 });
+  checar("dentro do teto, segue", !estourouTeto(comTeto, 0.1, 5.5));
+  checar("no limite, segue", !estourouTeto(comTeto, 1 / 5.5, 5.5));
+  checar("acima do teto, para", estourouTeto(comTeto, 0.2, 5.5));
+  checar("sem teto, nunca para", !estourouTeto(rotina(), 999, 5.5));
+  checar("teto zero e o mesmo que sem teto", !estourouTeto(rotina({ teto: 0 }), 999, 5.5));
+  checar("cotacao maior estoura mais cedo", estourouTeto(rotina({ teto: 1 }), 0.19, 6));
 }

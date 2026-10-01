@@ -5,7 +5,17 @@
  * aparece na descoberta — o modelo não deve saber que ela existe.
  */
 
-import { acharConector, acharTool, conferirEndereco, destinoDe, nomeDeExibicao, permissaoDe, toolsVisiveis, type Conector } from "../src/mcp/conectores";
+import {
+  acharConector,
+  acharTool,
+  conferirEndereco,
+  destinoDe,
+  nomeDeExibicao,
+  normalizarConector,
+  permissaoDe,
+  toolsVisiveis,
+  type Conector,
+} from "../src/mcp/conectores";
 import { linhasDeConectores, toolsMcp } from "../src/mcp/tools";
 import type { ContextoTool } from "../src/motor/tools";
 import { checar, secao } from "./util";
@@ -65,6 +75,21 @@ export function verificarMcpPermissao(): void {
   checar("endereco sem sentido nao vale", !conferirEndereco("isso nao e url").ok);
   const bom = conferirEndereco("https://mcp.exemplo.com/mcp");
   checar("origem volta para pedir permissao", bom.ok === true && bom.origem === "https://mcp.exemplo.com", bom);
+
+  secao("mcp: conector malformado no armazenamento");
+  {
+    // Conector gravado por outra versao, ou corrompido: nao pode derrubar o
+    // painel na hora de resolver permissao.
+    const cru = normalizarConector({ id: "c9", nome: "Velho", url: "https://m.exemplo.com/mcp" });
+    checar("sem permissoes nem padrao, ainda e lido", cru !== null);
+    checar("o padrao vira requer aprovacao", cru?.padrao === "aprovar", cru);
+    checar("resolver permissao nao quebra", permissaoDe(cru as Conector, "qualquer") === "aprovar");
+    checar("listar ferramentas nao quebra", toolsVisiveis(cru as Conector).length === 0);
+    checar("sem id ou url, e descartado", normalizarConector({ nome: "x" }) === null && normalizarConector({ id: "a", nome: "b" }) === null);
+    const comLixo = normalizarConector({ id: "c8", nome: "Lixo", url: "https://m.exemplo.com/mcp", permissoes: { a: "talvez" }, padrao: "sim", tools: "nao e lista" });
+    checar("permissao desconhecida cai para aprovar", comLixo?.permissoes.a === "aprovar", comLixo?.permissoes);
+    checar("tools que nao e lista fica vazia", (comLixo?.tools ?? []).length === 0);
+  }
 
   secao("mcp: destino");
   const comToken = conector({ auth: { tipo: "token", cabecalho: "Authorization", valor: "Bearer segredo" } });
@@ -158,6 +183,15 @@ export async function verificarMcpTools(): Promise<void> {
     const r = (await chamar.executar({ servidor: "Notion", tool: "buscar", argumentos: {} }, contexto)) as { erro: string };
     checar("conector sem consentimento pergunta antes de enviar", pedidos === 1);
     checar("consentimento recusado nao chama o servidor", chamado.length === 0 && /não autorizou/i.test(r.erro), r);
+  }
+
+  secao("mcp: anonimizador que devolve lixo");
+  {
+    const tools = toolsMcp({ conectores: () => [conector({ permissoes: { buscar: "sempre" }, consentido: true })], guardar: async () => undefined, cliente: clienteFalso });
+    const chamar = tools.find((t) => t.nome === "mcp_chamar")!;
+    const contexto = { ...ctx(), anonimizar: () => "isso nao e json" } as unknown as ContextoTool;
+    const r = (await chamar.executar({ servidor: "Notion", tool: "buscar", argumentos: { q: "x" } }, contexto)) as { erro?: string };
+    checar("falha no mascaramento vira erro explicado, nao excecao crua", /mascarar|mascaramento/i.test(r.erro ?? ""), r);
   }
 
   secao("mcp: conector indisponivel");
