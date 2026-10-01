@@ -31,6 +31,16 @@ export interface ContextoTool {
    * SEI precisa ser mascarado de novo.
    */
   anonimizar(texto: string): string;
+  /**
+   * Identificador do envelope desta conversa (ver `seguranca/envelope.ts`).
+   *
+   * Todo conteúdo de documento entra delimitado por ele. Como é sorteado a
+   * cada conversa, documento escrito antes não tem como fechar o envelope e
+   * continuar "do lado de fora", como instrução.
+   */
+  nonce: string;
+  /** Anota o que a varredura achou num documento, para o relatório de integridade. */
+  registrarAchados(documento: string, achados: Array<{ classe: string; trecho: string; motivo?: string }>): void;
   /** Registra nomes de pessoas vistos nos metadados, para o dicionário da anonimização. */
   pessoasVistas(nomes: string[]): void;
   /** Interface do painel (tools internas: perguntar, tarefas). */

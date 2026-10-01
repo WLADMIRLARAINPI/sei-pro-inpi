@@ -45,6 +45,8 @@ import {
 import { guardarConectores, listarConectores, type Conector } from "../mcp/conectores";
 import { linhasDeConectores, toolsMcp } from "../mcp/tools";
 import { cartaoExterno, secaoConectores } from "./mcp-ui";
+import { textoDaIntegridade, varrer } from "../seguranca/injecao";
+import { envelopar } from "../seguranca/envelope";
 import { secaoRotinas } from "./rotinas-ui";
 import { aoAvisar, aplicarConfigDoSync, aplicarDoSync, CHAVE_MIGRADO, espelharConfig, ESPELHOS, unirNaPrimeiraVez } from "./espelho";
 import {
@@ -199,6 +201,15 @@ class App {
 
   /** Perguntas que o agente faz sozinho de tempos em tempos. */
   private rotinas: Rotina[] = [];
+
+  /**
+   * Documentos desta conversa que traziam conteúdo suspeito.
+   *
+   * Alimenta o relatório de integridade e, principalmente, o aviso no cartão
+   * de aprovação: aprovar uma alteração proposta depois de ler um documento
+   * adulterado é uma decisão que precisa ser tomada sabendo disso.
+   */
+  private integridadeDaConversa: Array<{ documento: string; achados: Array<{ classe: string; trecho: string; motivo?: string }> }> = [];
 
   /** O aviso da cota de sincronização aparece uma vez por sessão. */
   private avisouDaCota = false;
@@ -1856,8 +1867,8 @@ class App {
       privacidade: this.privacidade,
       sei: (op, args, s2) => this.ponte.executar(op, args, s2),
       limitePassos: 14,
-      sistema: (tela) =>
-        `${promptSistema(tela, new Date(), this.config.instrucoes, this.skills, blocoDeMemoria(this.memoria))}
+      sistema: (tela, nonce) =>
+        `${promptSistema(tela, new Date(), this.config.instrucoes, this.skills, blocoDeMemoria(this.memoria), "", nonce)}
 
 Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\u00E3o fala com o usu\u00E1rio.
 - S\u00F3 tem ferramentas de leitura. N\u00E3o prometa nem planeje escrita.
@@ -2375,7 +2386,7 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
       ui: this.interfaceMotor(),
       privacidade: this.privacidade,
       sei: (op, args, sinal) => (op === "editores" ? Promise.resolve(this.ponte.editores()) : this.ponte.executar(op, args, sinal)),
-      sistema: (tela) => promptSistema(tela, new Date(), this.config.instrucoes, this.skills, blocoDeMemoria(this.memoria), linhasDeConectores(this.conectores)),
+      sistema: (tela, nonce) => promptSistema(tela, new Date(), this.config.instrucoes, this.skills, blocoDeMemoria(this.memoria), linhasDeConectores(this.conectores), nonce),
       delegar: (tarefa, sinal) => this.delegar(tarefa, sinal),
       lembrar: (fato) => this.lembrar(fato),
       regras: (passos) => {
@@ -2405,7 +2416,19 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
     const custoAntes = this.uso.custo;
     const comecou = Date.now();
     this.ultimaResposta = null;
-    const comAnexo = this.anexo ? `${t}\n\n[Anexo: ${this.anexo.nome}]\n${this.anexo.texto}` : t;
+    // O arquivo anexado também é conteúdo de fora: uma planilha ou um texto
+    // recebido de terceiro pode trazer instrução escondida igual a uma
+    // petição. Vai varrido e dentro do envelope da conversa.
+    this.motor ??= this.criarMotor();
+    let comAnexo = t;
+    if (this.anexo) {
+      const varrido = varrer(this.anexo.texto);
+      if (varrido.achados.length) {
+        this.integridadeDaConversa.push({ documento: this.anexo.nome, achados: varrido.achados });
+        this.adicionar({ tipo: "aviso", texto: textoDaIntegridade(this.anexo.nome, varrido.achados) });
+      }
+      comAnexo = `${t}\n\n${envelopar(`anexo ${this.anexo.nome}`, varrido.texto, this.motor.envelope)}`;
+    }
     // `/slug` na mensagem: o conteúdo da skill vai junto, como material de apoio.
     const usadas = skillsCitadas(t, this.skills);
     const comContexto = comSkills(comAnexo, usadas);
@@ -2568,6 +2591,10 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
   private interfaceMotor(): InterfaceMotor {
     return {
       aprovarExterno: (p) => cartaoExterno(p, (op) => this.abrirModal(op)),
+      integridade: (documento, achados) => {
+        this.integridadeDaConversa.push({ documento, achados });
+        this.adicionar({ tipo: "aviso", texto: textoDaIntegridade(documento, achados) });
+      },
       texto: (delta) => {
         if (!this.bolhaAtual) {
           this.pensar(false);
@@ -2712,6 +2739,22 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
         h("div", { class: "cartao-topo" }, h("span", { class: "badge" }, icone("lapis", 15)), h("h4", {}, "Aprovar altera\u00E7\u00F5es no SEI")),
         p.passos.length > 1 || p.objetivo !== p.passos[0]?.rotulo ? h("div", { class: "sub" }, p.objetivo) : null,
         ...(p.avisos ?? []).map((a) => h("div", { class: "nota atencao" }, icone("alerta", 15), h("span", {}, a))),
+        // Quem aprova precisa saber que a proposta veio depois de ler um
+        // documento que trazia instrução escondida.
+        ...(this.integridadeDaConversa.length
+          ? [
+              h(
+                "div",
+                { class: "nota atencao" },
+                icone("escudo", 15),
+                h(
+                  "span",
+                  {},
+                  `Aten\u00E7\u00E3o: ${this.integridadeDaConversa.length === 1 ? "um documento lido nesta conversa trazia" : `${this.integridadeDaConversa.length} documentos lidos nesta conversa traziam`} conte\u00FAdo dirigido a IA (${this.integridadeDaConversa.map((x) => x.documento).join(", ")}). As instru\u00E7\u00F5es foram ignoradas, mas confira se o que est\u00E1 sendo proposto \u00E9 mesmo o que voc\u00EA pediu.`,
+                ),
+              ),
+            ]
+          : []),
         ...p.passos.map((passo, i) => {
           const linhas = passo.previa.slice(0, 15).map((item) =>
             item.erro

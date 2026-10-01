@@ -143,6 +143,12 @@ export interface InterfaceMotor {
   consentir(tipo: "restrito" | "conector", detalhe: string): Promise<boolean>;
   /** Autoriza uma chamada a conector MCP (só quando a permissão é "aprovar"). */
   aprovarExterno?(p: PedidoExterno): Promise<DecisaoExterna>;
+  /**
+   * Um documento lido trazia conteúdo suspeito (instrução dirigida a IA, texto
+   * escondido da tela, caractere invisível). O painel acumula para o relatório
+   * de integridade e avisa antes de o usuário aprovar qualquer alteração.
+   */
+  integridade?(documento: string, achados: Array<{ classe: string; trecho: string; motivo?: string }>): void;
   perguntar(pergunta: string, opcoes: string[]): Promise<string>;
   tarefas(lista: Tarefa[]): void;
   uso(total: Uso): void;

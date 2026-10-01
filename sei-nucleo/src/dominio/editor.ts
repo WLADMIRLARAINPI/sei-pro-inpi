@@ -211,6 +211,55 @@ async function salvar(sei: Sei, ed: EditorDocumento, novas: Record<string, strin
 }
 
 /** Texto visível de um trecho HTML (para prévias). */
+/**
+ * Estilos que escondem o texto da tela sem tirá-lo do documento.
+ *
+ * É por aqui que entra a instrução dirigida a IA: um parágrafo em fonte
+ * branca de 1px no cabeçalho da peça não aparece para quem lê, mas aparece
+ * para quem extrai o texto — foi o caso que o STF julgou em outubro de 2026.
+ */
+const ESCONDIDOS: Array<{ re: RegExp; motivo: string }> = [
+  { re: /display\s*:\s*none/i, motivo: "display:none (não é exibido)" },
+  { re: /visibility\s*:\s*hidden/i, motivo: "visibility:hidden (invisível)" },
+  { re: /font-size\s*:\s*0(?:\.0+)?\s*(?:px|pt|em|rem)?\b/i, motivo: "fonte de tamanho zero" },
+  { re: /font-size\s*:\s*[0-2](?:\.\d+)?\s*(?:px|pt)\b/i, motivo: "fonte minúscula, ilegível na tela" },
+  { re: /opacity\s*:\s*0(?:\.0+)?\b/i, motivo: "opacity:0 (transparente)" },
+  { re: /color\s*:\s*(?:#f{3}(?:f{3})?\b|white\b|rgba?\(\s*255\s*,\s*255\s*,\s*255)/i, motivo: "letra branca sobre fundo branco" },
+  { re: /(?:text-indent|left|top|margin-left)\s*:\s*-\s*\d{3,}/i, motivo: "posicionado fora da tela" },
+  { re: /(?:height|width)\s*:\s*0(?:px)?\s*(?:;|$)/i, motivo: "caixa de tamanho zero" },
+];
+
+export interface TextoComOcultos {
+  texto: string;
+  /** Trechos que existiam no documento mas não apareciam na tela. */
+  ocultos: Array<{ texto: string; motivo: string }>;
+}
+
+/**
+ * O mesmo texto de `textoDoHtml`, dizendo o que estava escondido da tela.
+ *
+ * O trecho oculto CONTINUA no texto: documento é prova, e quem analisa pode
+ * precisar citá-lo. O que muda é que ele deixa de passar despercebido — quem
+ * chama recebe a lista e decide o que fazer (no Agente de IA, vira marca no
+ * conteúdo e linha no relatório de integridade).
+ */
+export function textoDoHtmlComOcultos(html: string): TextoComOcultos {
+  const doc = analisarHtml(`<!doctype html><html><head></head><body>${html}</body></html>`);
+  const ocultos: Array<{ texto: string; motivo: string }> = [];
+  for (const el of doc.querySelectorAll("[style], [hidden]")) {
+    const texto = (el.textContent ?? "").trim();
+    if (!texto) continue;
+    const style = el.getAttribute("style") ?? "";
+    const achado = ESCONDIDOS.find((x) => x.re.test(style));
+    const motivo = achado?.motivo ?? (el.hasAttribute("hidden") ? "atributo hidden" : "");
+    if (!motivo) continue;
+    // Elemento dentro de outro já apontado não vira segunda ocorrência.
+    if (ocultos.some((o) => o.texto.includes(texto))) continue;
+    ocultos.push({ texto: texto.slice(0, 500), motivo });
+  }
+  return { texto: textoDoHtml(html), ocultos };
+}
+
 export function textoDoHtml(html: string): string {
   const doc = analisarHtml(`<!doctype html><html><head></head><body>${html}</body></html>`);
   for (const b of doc.querySelectorAll("p, br, li, tr, h1, h2, h3, h4, div")) b.append("\n");

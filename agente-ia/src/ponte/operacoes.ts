@@ -20,7 +20,7 @@ import {
   type AlteracaoDocumento,
   type NovoDocumento,
 } from "@nucleo/dominio/documento";
-import { abrirEditor, editarConteudo, textoDoHtml, type EditorDocumento } from "@nucleo/dominio/editor";
+import { abrirEditor, editarConteudo, textoDoHtmlComOcultos, type EditorDocumento } from "@nucleo/dominio/editor";
 import { andamentos, type TipoHistorico } from "@nucleo/dominio/historico";
 import { listarOpcoes, type ListaOpcoes } from "@nucleo/dominio/opcoes";
 import { alterarProcesso, concluirProcesso, consultarProcesso, reabrirProcesso, type AlteracaoProcesso } from "@nucleo/dominio/processo";
@@ -381,7 +381,11 @@ export const OPERACOES: Record<string, Op> = {
     const c = await lerConteudo(sei, d, { sinal });
     if (c.forma === "html") {
       const corpo = /<body[^>]*>([\s\S]*)<\/body>/i.exec(c.html)?.[1] ?? c.html;
-      return { ...meta, conteudo: { forma: "texto", texto: textoDoHtml(corpo.replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")) } };
+      // `ocultos`: o que existe no documento e NÃO aparece na tela (fonte
+      // branca, display:none). É por aí que entra instrução dirigida a IA —
+      // quem marca é o painel, que tem a varredura (ver seguranca/injecao.ts).
+      const { texto, ocultos } = textoDoHtmlComOcultos(corpo.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ""));
+      return { ...meta, conteudo: { forma: "texto", texto, ...(ocultos.length ? { ocultos } : {}) } };
     }
     const { bytes, tipo, nome } = c.arquivo;
     if (/^text\/|html|xml|json|csv/.test(tipo)) return { ...meta, conteudo: { forma: "texto", texto: new TextDecoder().decode(bytes) } };

@@ -15,6 +15,8 @@ import { s, type Esquema } from "../motor/esquema";
 import { definirTool, type ContextoTool, type DefTool } from "../motor/tools";
 import type { PreviaItem } from "../motor/tipos";
 import { extrairTextoPdf } from "../painel/pdf";
+import { envelopar } from "../seguranca/envelope";
+import { resumoDosAchados, varrer } from "../seguranca/injecao";
 
 type Args = Record<string, unknown>;
 
@@ -406,13 +408,27 @@ export const TOOLS_SEI: DefTool[] = [
             saida.push({ ...meta, erro: "Conte\u00FAdo restrito: o usu\u00E1rio n\u00E3o autorizou o envio ao modelo nesta conversa.", codigo: "CONTEUDO_RESTRITO_NAO_AUTORIZADO" });
             continue;
           }
-          const r = await ctx.sei<Record<string, unknown> & { conteudo: { forma: string; texto?: string; base64?: string; tipo?: string } }>("documento.ler", { numero });
+          const r = await ctx.sei<Record<string, unknown> & { conteudo: { forma: string; texto?: string; base64?: string; tipo?: string; ocultos?: Array<{ texto: string; motivo: string }> } }>("documento.ler", { numero });
           let texto = r.conteudo.texto ?? "";
           if (r.conteudo.forma === "arquivo" && r.conteudo.tipo === "application/pdf" && r.conteudo.base64) texto = await extrairTextoPdf(r.conteudo.base64);
           else if (r.conteudo.forma === "arquivo") texto = `[arquivo ${r.conteudo.tipo}: sem extra\u00E7\u00E3o de texto nesta vers\u00E3o]`;
           else if (r.conteudo.forma === "grande") texto = "[arquivo grande demais para ler]";
           const { conteudo: _c, ...m } = r;
-          saida.push({ ...m, total_caracteres: texto.length, inicio, texto: texto.slice(inicio, inicio + tamanho), ...(inicio + tamanho < texto.length ? { continua_em: inicio + tamanho } : {}) });
+          // O conteúdo do documento é DADO. Aqui ele é varrido (instrução
+          // dirigida a IA, marcador de papel, caractere invisível, texto que o
+          // HTML escondia), marcado sem ser apagado e posto dentro do envelope
+          // da conversa, de onde não consegue se passar por instrução.
+          const pedaco = texto.slice(inicio, inicio + tamanho);
+          const varrido = varrer(pedaco, { ocultos: r.conteudo.ocultos });
+          if (varrido.achados.length) ctx.registrarAchados(String(m.numero ?? numero), varrido.achados);
+          saida.push({
+            ...m,
+            total_caracteres: texto.length,
+            inicio,
+            texto: envelopar(String(m.numero ?? numero), varrido.texto, ctx.nonce),
+            ...(varrido.achados.length ? { integridade: resumoDosAchados(varrido.achados) } : {}),
+            ...(inicio + tamanho < texto.length ? { continua_em: inicio + tamanho } : {}),
+          });
         } catch (e) {
           const x = e as { message?: string; codigo?: string };
           saida.push({ numero, erro: x.message, codigo: x.codigo });
@@ -436,7 +452,18 @@ export const TOOLS_SEI: DefTool[] = [
       }
       const r = await ctx.sei<{ editor: string; secao: string; html: string; selecao: string }>("editor.ler", { numero: alvo.numero, secao: a.secao });
       const texto = r.html.replace(/<\/(p|div|li|tr|h\d)>/gi, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-      return { numero: alvo.numero, secao: r.secao, texto, html: r.html.slice(0, 20000), selecionado: r.selecao };
+      // O documento aberto no editor também é conteúdo: pode ter vindo de fora
+      // (cópia de petição, texto colado) com instrução escondida dentro.
+      const varrido = varrer(texto);
+      if (varrido.achados.length) ctx.registrarAchados(alvo.numero, varrido.achados);
+      return {
+        numero: alvo.numero,
+        secao: r.secao,
+        texto: envelopar(alvo.numero, varrido.texto, ctx.nonce),
+        html: r.html.slice(0, 20000),
+        selecionado: r.selecao,
+        ...(varrido.achados.length ? { integridade: resumoDosAchados(varrido.achados) } : {}),
+      };
     },
   }),
 

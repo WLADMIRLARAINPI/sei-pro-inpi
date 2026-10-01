@@ -16,6 +16,7 @@
  */
 
 import type { Pseudonimos } from "@nucleo/privacidade/anonimizar";
+import { nonceDaConversa } from "../seguranca/envelope";
 import { validar } from "./esquema";
 import type { ContextoTool, DefTool, EstadoConversa, RegistroTools } from "./tools";
 import type {
@@ -38,7 +39,7 @@ export interface OpcoesMotor {
   /** Operação na aba do SEI (a ponte). */
   sei: (op: string, args: Record<string, unknown>, sinal: AbortSignal) => Promise<unknown>;
   /** Monta o prompt de sistema (recebe o resumo da tela atual). */
-  sistema: (tela: TelaAtual | null) => string;
+  sistema: (tela: TelaAtual | null, nonce: string) => string;
   /**
    * Regras da unidade, avaliadas antes de escrever (ver painel/regras.ts).
    * Bloqueio nem chega ao cartão de aprovação: o que a unidade proíbe não se
@@ -81,11 +82,22 @@ export class ErroMotor extends Error {}
 
 export class Motor {
   private historico: Mensagem[] = [];
+  /**
+   * Envelope desta conversa: todo conteúdo de documento entregue ao modelo vai
+   * delimitado por ele (ver `seguranca/envelope.ts`). Sorteado aqui porque é
+   * por conversa, e porque documento algum pode conhecê-lo de antemão.
+   */
+  private readonly nonce = nonceDaConversa();
   private controlador: AbortController | null = null;
   private usoTotal: Uso = { entrada: 0, saida: 0, custo: 0 };
   readonly estado: EstadoConversa = { consentimentoRestrito: null, anexos: [] };
 
   constructor(private readonly o: OpcoesMotor) {}
+
+  /** O delimitador desta conversa, para quem monta conteúdo fora do motor. */
+  get envelope(): string {
+    return this.nonce;
+  }
 
   get ocupado(): boolean {
     return this.controlador !== null;
@@ -139,7 +151,7 @@ export class Motor {
       const limite = this.o.limitePassos ?? 40;
       for (let passo = 0; passo < limite; passo += 1) {
         const resposta = await this.o.provedor.conversar(
-          { mensagens: [{ role: "system", content: this.o.sistema(tela) }, ...this.compactado()], tools: this.o.tools.paraProvedor() },
+          { mensagens: [{ role: "system", content: this.o.sistema(tela, this.nonce) }, ...this.compactado()], tools: this.o.tools.paraProvedor() },
           sinal,
           (d) => this.o.ui.texto(d),
         );
@@ -192,6 +204,8 @@ export class Motor {
         return this.estado.consentimentoRestrito;
       },
       consentirConector: (detalhe) => this.o.ui.consentir("conector", detalhe),
+      nonce: this.nonce,
+      registrarAchados: (documento, achados) => this.o.ui.integridade?.(documento, achados),
       anonimizar: (texto) => this.o.privacidade.anonimizar(texto),
       pessoasVistas: (nomes) => this.o.privacidade.registrarPessoas(nomes),
       ui: this.o.ui,
