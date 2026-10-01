@@ -1526,6 +1526,16 @@ class App {
             h(
               "div",
               { class: "nota" },
+              icone("baixar", 15),
+              h(
+                "span",
+                {},
+                "A configura\u00E7\u00E3o do agente acompanha a sua conta do navegador: instru\u00E7\u00F5es, regras, rotinas, mem\u00F3ria, conectores e fluxos aparecem nos seus outros computadores. Ficam S\u00D3 aqui a chave do servi\u00E7o de IA, os tokens dos conectores, o texto das skills coladas \u00E0 m\u00E3o (as do GitHub viajam pelo endere\u00E7o) e as conversas.",
+              ),
+            ),
+            h(
+              "div",
+              { class: "nota" },
               icone("escudo", 15),
               h(
                 "span",

@@ -206,6 +206,29 @@ No alcance autônomo:
 * o aviso por notificação é **obrigatório** — você tem de saber que algo foi escrito;
 * na **primeira falha** ao alterar o SEI a rotina se desliga sozinha, com o motivo na lista. Insistir sem ninguém olhando é pior que parar.
 
+### O que acompanha você em outro computador
+
+A configuração do agente usa a **sincronização do próprio navegador** — a mesma que já leva as opções do SEI Pro. Quem entra na conta do Chrome (ou do Firefox) no computador de casa encontra o agente configurado como no trabalho, sem cadastrar nada de novo.
+
+| Acompanha você | Fica só neste computador |
+| -------------- | ------------------------ |
+| Serviço de IA escolhido, modelo e ajustes | **A chave do serviço de IA** |
+| Suas instruções adicionais | As conversas guardadas |
+| Regras da unidade | O gasto do dia |
+| Memória da unidade | |
+| Rotinas (sem o histórico de execuções) | O histórico de execuções de cada rotina |
+| Conectores: endereço, estado e permissão de cada ferramenta | **O token do conector** e a lista de ferramentas (que se refaz com um clique em *Atualizar lista*) |
+| Skills: nome, atalho e o **endereço no GitHub** | **O texto das skills coladas à mão** |
+| Coleções de skills da equipe | |
+| Fluxos do Estúdio de Fluxo | Os processos usados como modelo |
+
+Duas consequências práticas:
+
+* **skill colada à mão não viaja.** O texto de uma skill pode passar de 20 mil caracteres, e o navegador reserva pouco espaço para sincronizar — então viaja o endereço, não o conteúdo. Se você quer que uma skill acompanhe a sua conta, **mantenha o arquivo `.md` num repositório** e cadastre o endereço: o outro computador baixa sozinho;
+* **segredo nunca sai daqui.** A chave do serviço de IA e os tokens dos conectores não são sincronizados, nem exportados: em cada computador você os digita uma vez.
+
+Se a configuração passar do espaço que o navegador reserva, o agente avisa na conversa e para de sincronizar o excedente — o que já estava sincronizado continua valendo, e nada se perde neste computador.
+
 ### Memória da unidade
 
 Skills são o que **você escreve**. A memória é o que o agente **aprende** conversando: você corrige uma vez ("aqui o despacho termina com *Respeitosamente*") e ele leva isso para as próximas conversas.
