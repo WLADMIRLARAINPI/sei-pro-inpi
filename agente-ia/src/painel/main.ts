@@ -70,7 +70,7 @@ import { CHAVE_FLUXOS, comIgnorada, guardarFluxos, guardarIgnorados, listarFluxo
 // `import type`: o esbuild descarta, e o bundle do painel nao ganha o sei-nucleo.
 import type { RespostaFluxo, SugestaoDeFluxo } from "../ponte/operacoes";
 
-interface Config {
+export interface Config {
   /** Mostrar o gasto em reais, pela cotação do dia. */
   reais: boolean;
   /** Guardar a transcrição das conversas neste navegador. */
