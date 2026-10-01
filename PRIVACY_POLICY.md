@@ -1,8 +1,8 @@
 # Política de Privacidade — SEI Pro ![SEI Pro](/img/icon-32.png)
 
-**Versão:** 3.0  
-**Data de Vigência:** 28 de setembro de 2026  
-**Última Atualização:** 28 de setembro de 2026
+**Versão:** 3.1  
+**Data de Vigência:** 1º de outubro de 2026  
+**Última Atualização:** 1º de outubro de 2026
 
 ---
 
@@ -55,8 +55,25 @@ O único serviço mantido pelo projeto é a **busca de normas** (`seipro.io`), u
 O SEI Pro guarda configurações e dados de trabalho **no dispositivo do usuário**, usando os recursos do próprio navegador:
 
 - **Local Storage e Session Storage:** preferências e dados temporários de uso nas páginas do SEI;
-- **Storage API do navegador (`storage.local`, `storage.sync` e `storage.session`):** configurações da extensão. O `storage.sync` é sincronizado entre os dispositivos do usuário pela conta do navegador (Google ou Microsoft), se a sincronização estiver ativada;
+- **Storage API do navegador (`storage.local`, `storage.sync` e `storage.session`):** configurações da extensão. O `storage.sync` é sincronizado entre os dispositivos do usuário pela conta do navegador (Google, Microsoft ou Mozilla), se a sincronização estiver ativada;
 - **IndexedDB:** dados estruturados, como o histórico de processos visitados e as conversas do Agente de IA.
+
+#### O que é sincronizado entre dispositivos
+
+Quando a sincronização do navegador está ativada, acompanham a conta do usuário:
+
+- as **opções do SEI Pro** marcadas na página de configurações, inclusive os dados de conexão da função **Base de Dados** — endereço, identificador de cliente e chave de API do serviço que o próprio usuário indicou (seção 4.3);
+- a **configuração do Agente de IA**: serviço escolhido, modelo, ajustes, instruções adicionais, limites de gasto, regras da unidade, memória da unidade, rotinas, fluxos, coleções de skills e, das skills, apenas nome, atalho e o endereço do arquivo de origem;
+- os **conectores (servidores MCP)** cadastrados: nome, endereço, situação e a permissão dada a cada ferramenta.
+
+**Permanecem somente no dispositivo em que foram informados:**
+
+- a **chave de API do serviço de IA**;
+- o **token de autenticação dos conectores**;
+- o **texto das skills** criadas diretamente no painel (as que vêm de um repositório viajam apenas como endereço);
+- as conversas guardadas, o gasto diário, o histórico de execuções das rotinas e o catálogo de ferramentas dos conectores.
+
+Esses dados trafegam pela infraestrutura do fabricante do navegador, nunca por servidores do SEI Pro. O usuário pode desligar a sincronização nas configurações do próprio navegador; nesse caso, tudo passa a ficar apenas no dispositivo.
 
 ### 3.2. Tipos de dados
 
@@ -69,6 +86,9 @@ O SEI Pro guarda configurações e dados de trabalho **no dispositivo do usuári
 | Chave de API do serviço de IA | Usar o Agente de IA | Somente neste navegador (não é sincronizada) |
 | Conversas do Agente de IA | Reler conversas anteriores | Navegador, com prazo de guarda escolhido pelo usuário (7, 30 ou 90 dias, ou sem limite); o recurso pode ser desligado |
 | Tabela de pseudônimos do Agente de IA | Restaurar os dados reais nas respostas | Memória temporária; apagada ao fechar o navegador |
+| Conectores (MCP): endereço, situação e permissões | Usar ferramentas externas no Agente de IA | Navegador; sincronizados pela conta do navegador, se ativado |
+| Token de autenticação dos conectores | Acessar o serviço indicado pelo usuário | Somente neste navegador (não é sincronizado) |
+| Rotinas do Agente de IA e seu histórico de execuções | Repetir tarefas que o usuário programou | Navegador; as rotinas são sincronizadas, o histórico não |
 
 ### 3.3. Controle do usuário
 
@@ -97,7 +117,7 @@ Os dados guardados no navegador **não são criptografados pela extensão**. A s
 
 ### 4.2. Agente de IA
 
-- **Quando funciona:** só depois que o usuário abre o painel do agente e cadastra uma **chave de API própria**. Sem chave, nenhuma conversa é enviada.
+- **Quando funciona:** só depois que o usuário abre o painel do agente e cadastra uma **chave de API própria**. Sem chave, nenhuma conversa é enviada. O usuário também pode cadastrar **rotinas**: pedidos que ele escreve uma vez e manda repetir em um horário. Nesse caso o envio acontece sem ele digitar na hora, mas sempre a partir do pedido que ele próprio cadastrou, com o agente aberto no seu navegador e usando a sua sessão do SEI. Uma rotina só altera o SEI se o usuário tiver autorizado essa rotina, ferramenta por ferramenta; exclusão, cancelamento e assinatura nunca são feitos por rotina.
 - **Destinatário:** o serviço de IA escolhido pelo usuário:
   - OpenRouter (pré-selecionado);
   - OpenAI;
@@ -117,6 +137,7 @@ Os dados guardados no navegador **não são criptografados pela extensão**. A s
 - **Sigilo:**
   - Processos e documentos **sigilosos nunca são lidos**.
   - Documentos **restritos** só são lidos com autorização do usuário, pedida a cada conversa. Dados de identificação, como número e título, podem ser enviados sem esse pedido.
+- **Conteúdo dos documentos tratado como dado:** antes de ser enviado ao serviço de IA, o conteúdo lido dos processos passa por uma verificação local, no próprio navegador, que identifica (a) trechos que o documento esconde da tela por recursos de formatação, (b) caracteres invisíveis e (c) textos redigidos como ordem dirigida a sistemas de inteligência artificial. Esses trechos são **marcados, não removidos** — o documento é preservado na íntegra — e o resultado é mostrado ao usuário como verificação de integridade. Nenhuma instrução encontrada em documento é executada pelo agente.
 - **Ações no SEI:** nenhuma ação é executada sem aprovação do usuário, caso a caso. Isso vale para criar, editar, assinar, enviar e as demais ações. A senha de assinatura é digitada pelo usuário e enviada somente ao SEI.
 - **Retenção pelo serviço de IA:**
   - No OpenRouter, o pedido exige que ele só seja encaminhado a provedores que não guardam os dados nem os usam para treinar modelos.
@@ -127,10 +148,24 @@ Os dados guardados no navegador **não são criptografados pela extensão**. A s
   - **arquivos de skills e coleções:** baixados dos endereços que o usuário cadastrar, como pastas do GitHub (`api.github.com`, `raw.githubusercontent.com`).
 - **Políticas aplicáveis:** [OpenRouter](https://openrouter.ai/privacy), [OpenAI](https://openai.com/policies/privacy-policy), [Google](https://policies.google.com/privacy), [Anthropic](https://www.anthropic.com/legal/privacy).
 
+### 4.2.1. Conectores (servidores MCP) do Agente de IA
+
+- **Quando acontece:** somente se o usuário cadastrar um conector em Configuração → O que o agente pode → Conectores (MCP). Sem conector cadastrado, nada nesta subseção se aplica.
+- **Destinatário:** o servidor escolhido pelo próprio usuário, identificado pelo endereço que ele informou. Pode ser um serviço do órgão, um serviço público ou um serviço de terceiro. O SEI Pro não mantém, não indica e não intermedeia nenhum conector.
+- **O que é enviado:** apenas os parâmetros da ferramenta que o agente for usar, montados a partir do pedido do usuário e do que foi lido no SEI naquela conversa. Dados pessoais são mascarados antes do envio, pelo mesmo mecanismo aplicado ao serviço de IA (seção 4.2).
+- **Autorizações exigidas, em três camadas:**
+  1. o navegador pede ao usuário a permissão de acesso ao endereço do conector, no momento em que ele testa a conexão;
+  2. na primeira chamada a cada conector, o agente pede autorização explícita, informando que o conteúdo sairá do navegador para aquele endereço;
+  3. cada ferramenta do conector tem a permissão que o usuário definir — sempre permitir, requer aprovação (padrão) ou bloqueado. Em "requer aprovação", o usuário vê o conteúdo exato antes do envio.
+- **O que fica guardado:** endereço, nome, token de autenticação, lista de ferramentas e permissões, somente no navegador do usuário. O token não é sincronizado (seção 3.1).
+- **Retenção pelo servidor do conector:** regida pelos termos do serviço escolhido pelo usuário. O SEI Pro não tem como conhecê-los nem como garanti-los.
+- **O conector não altera o SEI:** ele oferece ferramentas externas. Qualquer alteração no SEI continua dependendo da aprovação do usuário.
+
 ### 4.3. Gestão de Atividades, Projetos e Prescrições
 
 - **Natureza:** o módulo não é um serviço público do SEI Pro. Ele depende de um **servidor mantido pelo órgão** que o adota. O endereço e a chave de acesso são fornecidos pela área responsável do órgão. Sem essa configuração, o módulo não envia dados.
 - **Destinatário:** exclusivamente o servidor do órgão, que é quem controla esses dados.
+- **Onde ficam as credenciais:** o endereço, o identificador de cliente e a chave de API ficam no navegador e, com a sincronização ativada, **acompanham a conta do navegador do usuário**, como as demais opções do SEI Pro (seção 3.1).
 - **O que é enviado, depois de configurado:**
   - em toda chamada: a chave de acesso do usuário e a sigla da unidade;
   - ao abrir um processo: o número dele, para exibir as demandas vinculadas;
@@ -180,7 +215,10 @@ A extensão **ainda não oferece configuração centralizada** por política de 
 | `storage` | Guardar configurações e preferências no navegador |
 | `sidePanel` (Chrome e Edge) ou painel lateral (Firefox) | Exibir o painel do Agente de IA |
 | Acesso às páginas do SEI | Os scripts da extensão só são carregados em endereços de instalações do SEI e do SIP (por exemplo, `/sei/`, `/sip/` e `controlador.php`, em domínios `.br` e `.org`) |
+| `alarms` (Chrome e Edge) | Marcar o horário das rotinas que o próprio usuário cadastra no Agente de IA. Nenhum dado sai do navegador por causa dela |
+| `notifications` (opcional) | Avisar quando uma rotina do Agente de IA termina ou fica pendente. É pedida **somente** quando o usuário marca "avisar quando terminar"; recusada, a extensão funciona normalmente e nenhuma notificação é mostrada |
 | Acesso opcional a outros endereços (`https://*/*`, `localhost`) | Pedido **somente** quando o usuário configura, no Agente de IA, um serviço diferente do OpenRouter, e **apenas para o endereço desse serviço**. O navegador mostra o pedido e o usuário decide |
+| Acesso opcional ao endereço de um conector (MCP) | Pedido **somente** quando o usuário cadastra um conector e testa a conexão, e **apenas para o endereço daquele conector** |
 
 ### 5.2. Menor privilégio
 
@@ -240,7 +278,9 @@ O SEI Pro é uma ferramenta de trabalho destinada à Administração Pública. E
   - substituição de dados pessoais antes do envio;
   - bloqueio de documentos sigilosos;
   - consentimento para documentos restritos;
-  - aprovação de cada ação no SEI.
+  - aprovação de cada ação no SEI;
+  - verificação local do conteúdo dos documentos, que marca instruções dirigidas a sistemas de inteligência artificial e trechos escondidos da tela, sem alterar o documento (seção 4.2);
+  - delimitação do conteúdo enviado ao modelo, para que texto vindo de documento não possa se passar por instrução.
 - **Restrição de código:** a extensão só executa código do próprio pacote; não carrega scripts de fora.
 - **Código aberto e atualizações:** o código é auditável e as correções são publicadas no repositório e nas lojas.
 
@@ -295,6 +335,7 @@ As alterações relevantes são comunicadas:
 
 | Versão | Data | Principais alterações |
 |---|---|---|
+| 3.1 | 01/10/2026 | Conectores (servidores MCP) configurados pelo usuário; sincronização da configuração do Agente de IA entre dispositivos, com a lista do que viaja e do que fica no aparelho; declaração de que as credenciais da função Base de Dados acompanham a conta do navegador; verificação local do conteúdo dos documentos contra instruções dirigidas a sistemas de IA; rotinas do Agente de IA; permissões `alarms` e `notifications` |
 | 3.0 | 28/09/2026 | Revisão completa. Inventário de todas as funções que se comunicam com serviços externos (Agente de IA, módulo de Atividades, busca de normas, equações, ditado, Estúdio de Fluxo e demais), com o dado enviado, a condição e o destinatário; correção da declaração de que a extensão não transmite dados; tabela de permissões atualizada; orientação de controle institucional por bloqueio de rede |
 | 2.0 | 14/01/2026 | Reformulação para adequação à LGPD; detalhamento das integrações externas |
 | 1.0 | 02/08/2020 | Versão inicial (modelo genérico) |
