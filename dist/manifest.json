@@ -19,7 +19,8 @@
   },
   "permissions": [
     "storage",
-    "sidePanel"
+    "sidePanel",
+    "alarms"
   ],
   "background": {
     "service_worker": "background.js"
@@ -564,5 +565,8 @@
     "https://*/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
+  ],
+  "optional_permissions": [
+    "notifications"
   ]
 }
