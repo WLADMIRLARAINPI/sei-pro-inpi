@@ -133,29 +133,74 @@ function getManifestExtension() {
         return browser.runtime.getManifest();
     }
 }
-function loadConfigPro() {
-    if (typeof browser === "undefined") {
-        chrome.storage.sync.get({
-            dataValues: ''
-        }, function(items) {  
-            if (typeof items !== 'undefined') {
-                localStorage.setItem('configBasePro', items.dataValues);
-                loadDataBaseProStorage(items);
-            }
-        });
-    } else {
-        browser.storage.sync.get({
-            dataValues: ''
-        }, function(items) {  
-            if (typeof items !== 'undefined') {
-                localStorage.setItem('configBasePro', items.dataValues);
-                loadDataBaseProStorage(items);
-            }
-        });
+/**
+ * Guarda no localStorage da pagina o MINIMO que os scripts do mundo da pagina
+ * precisam: as opcoes marcadas (configGeral) e a base de ATIVIDADES.
+ *
+ * Antes ia o dataValues inteiro, e com ele todas as credenciais da Base de
+ * Dados - a API_KEY do Google Sheets e as chaves de OpenAI/Gemini - ficavam
+ * legiveis para qualquer script da pagina do SEI, e sobreviviam a
+ * desinstalacao da extensao (localStorage e do site, nao da extensao).
+ *
+ * Por que a base de atividades CONTINUA aqui: sei-pro-atividades.js roda no
+ * mundo da pagina (e carregado por $.getScript, nao e content script), nao
+ * alcanca chrome.storage, e le daqui o URL_API/KEY_USER do perfil e o
+ * baseName para montar o seletor de perfis. Tirar isso exige uma ponte de
+ * mensagens com o mundo isolado - outra empreitada.
+ *
+ * Quem le, e o que espera: checkConfigValue (sei-functions-pro.js),
+ * verifyConfigValue (init_pwd.js, init_visualizacao.js) usam
+ * "[*].configGeral | [0]"; sei-pro-atividades.js usa
+ * "[?baseTipo=='atividades'] | [?conexaoTipo=='api']". O formato de array se
+ * mantem e nada mais muda. As demais bases seguem por parametro, em memoria
+ * (ver loadScriptDataBasePro).
+ */
+function cacheConfigPaginaPro(texto) {
+    try {
+        var lista = (typeof texto === 'string' && texto != '') ? JSON.parse(texto) : [];
+        var paraPagina = [];
+        for (var i = 0; i < lista.length; i++) {
+            if (typeof lista[i]['configGeral'] !== 'undefined') { paraPagina.push({configGeral: lista[i]['configGeral']}); }
+            else if (lista[i]['baseTipo'] == 'atividades') { paraPagina.push(lista[i]); }
+        }
+        localStorage.setItem('configBasePro', JSON.stringify(paraPagina));
+    } catch (e) {
+        localStorage.setItem('configBasePro', '');
     }
 }
+function loadConfigPro() {
+    var navegador = (typeof browser === "undefined") ? chrome : browser;
+    navegador.storage.sync.get({
+        dataValues: ''
+    }, function(items) {  
+        if (typeof items !== 'undefined') {
+            cacheConfigPaginaPro(items.dataValues);
+            loadDataBaseProStorage(items);
+        }
+    });
+}
+/**
+ * Mudanca feita em OUTRO computador chega aqui pela area `sync`.
+ *
+ * Sem isto, a opcao alterada no outro navegador so passava a valer depois de
+ * um recarregamento manual. A pagina nao e recarregada sozinha (seria
+ * atropelar o trabalho de quem esta no meio de um processo): o cache local e
+ * atualizado, e a proxima leitura ja usa o valor novo.
+ */
+function ouvirConfigSyncPro() {
+    var navegador = (typeof browser === "undefined") ? chrome : browser;
+    if (!navegador.storage || !navegador.storage.onChanged) { return; }
+    navegador.storage.onChanged.addListener(function(mudancas, area) {
+        if (area !== 'sync' || !mudancas.dataValues) { return; }
+        cacheConfigPaginaPro(mudancas.dataValues.newValue || '');
+    });
+}
+ouvirConfigSyncPro();
 function loadScriptDataBasePro(dataValues) { 
-    var dataValues = localStorageRestorePro('configBasePro');
+    /* As bases vem por PARAMETRO e ficam so aqui, no mundo isolado do content
+       script: nao passam mais pelo localStorage da pagina (ver
+       cacheConfigPaginaPro). O parametro era recebido e ignorado. */
+    var dataValues = (dataValues && dataValues.length) ? dataValues : [];
     var dataValues_ProjetosSheets = jmespath.search(dataValues, "[?baseTipo=='projetos'] | [?conexaoTipo=='sheets'] | [?API_KEY!='']");
     var dataValues_FormulariosSheets = jmespath.search(dataValues, "[?baseTipo=='formularios'] | [?conexaoTipo=='sheets'] | [?API_KEY!='']");
     var dataValues_ProcessosSheets = jmespath.search(dataValues, "[?baseTipo=='processos'] | [?conexaoTipo=='sheets'] | [?API_KEY!='']");

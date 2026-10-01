@@ -70,8 +70,22 @@ function setOptionsSEIPro(option_key, option_value) {
             chrome.storage.sync.set({
                 dataValues: JSON.stringify(dataValues)
             }, function() {
-                console.log('dataValues', dataValues);
-                localStorage.setItem('configBasePro', JSON.stringify(dataValues)); 
+                /* Sem esta checagem, a opcao parecia salva e nao estava (cota
+                   do item, limite de escritas por hora). */
+                if (chrome.runtime.lastError) {
+                    console.warn('SEI Pro: nao foi possivel salvar a opcao - ' + chrome.runtime.lastError.message);
+                    return;
+                }
+                /* So o que o mundo da pagina precisa: as opcoes e a base de
+                   atividades. As outras credenciais nao vao para o
+                   localStorage do SEI (o porque esta em cacheConfigPaginaPro,
+                   em init.js - mantenha os dois iguais). */
+                var paraPagina = [];
+                for (var k = 0; k < dataValues.length; k++) {
+                    if (typeof dataValues[k]['configGeral'] !== 'undefined') { paraPagina.push({configGeral: dataValues[k]['configGeral']}); }
+                    else if (dataValues[k]['baseTipo'] == 'atividades') { paraPagina.push(dataValues[k]); }
+                }
+                localStorage.setItem('configBasePro', JSON.stringify(paraPagina)); 
             });
         }
     });
@@ -98,6 +112,10 @@ function getOptionsSEIPro(data) {
             chrome.storage.sync.set({
                 dataValues: JSON.stringify(dataValues)
             }, function() {
+                if (chrome.runtime.lastError) {
+                    alert('N\u00e3o foi poss\u00edvel salvar a configura\u00e7\u00e3o da base: ' + chrome.runtime.lastError.message);
+                    return;
+                }
                 if (data.alert) { 
                     if (data.mode == 'insert') {
                         alert('Configura\u00e7\u00f5es carregadas com sucesso!'); 

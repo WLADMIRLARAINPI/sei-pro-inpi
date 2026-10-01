@@ -44,10 +44,12 @@ function loadFile() {
     var fr = new FileReader();
     fr.onload = function(e) { 
         var result = JSON.parse(e.target.result);        
+        var comoTexto = JSON.stringify(result);
+        if (!checkEspacoSyncPro(comoTexto)) { return; }
         chrome.storage.sync.set({
-            dataValues: JSON.stringify(result)
+            dataValues: comoTexto
         }, function() {
-            // Update status to let user know options were saved.
+            if (checkErroSyncPro()) { return; }
             alertaBoxPro('Sucess', 'check-circle', 'Configura\u00e7\u00f5es carregadas com sucesso!');
             //location.reload(true);
         });
@@ -82,20 +84,51 @@ function downloadFile() {
 }
 // Saves options to chrome.storage
 function remove_options() {
-        chrome.storage.sync.set({
-            dataValues: ''
-        }, function() {
-            // Update status to let user know options were saved.
+        /* `remove` em vez de gravar string vazia: libera o espaco no sync em
+           vez de deixar a chave ocupando lugar. Quem le usa o padrao '' do
+           proprio `get`, entao nada muda para os leitores. */
+        chrome.storage.sync.remove('dataValues', function() {
+            if (checkErroSyncPro()) { return; }
             alertaBoxPro('Sucess', 'check-circle', 'Configura\u00e7\u00f5es removidas com sucesso!');
             //location.reload(true); 
         });
 }
+/* Limite do navegador para UM item do storage.sync (8 KB). Toda a configuracao
+   do SEI Pro vai numa unica chave, dataValues: passar deste tamanho faz o
+   navegador RECUSAR a gravacao, e antes disso ninguem era avisado. */
+var LIMITE_ITEM_SYNC_PRO = 8192;
+
+/* Avisa (ou impede) antes de tentar gravar algo que nao caiba. */
+function checkEspacoSyncPro(texto) {
+    var tamanho = new Blob([texto]).size;
+    if (tamanho > LIMITE_ITEM_SYNC_PRO) {
+        alertaBoxPro('Error', 'exclamation-triangle', 'As configura\u00E7\u00F5es passaram do espa\u00E7o que o navegador reserva para sincroniz\u00E1-las (' + tamanho + ' de ' + LIMITE_ITEM_SYNC_PRO + ' bytes). Remova uma base de dados que n\u00E3o use e salve de novo.');
+        return false;
+    }
+    if (tamanho > (LIMITE_ITEM_SYNC_PRO * 0.8)) {
+        console.warn('SEI Pro: as configuracoes ocupam ' + tamanho + ' de ' + LIMITE_ITEM_SYNC_PRO + ' bytes do espaco de sincronizacao.');
+    }
+    return true;
+}
+
+/* O erro do navegador (cota, limite de escritas por hora) so aparece aqui.
+   Sem esta checagem a extensao dizia "salvo com sucesso" sem ter salvado. */
+function checkErroSyncPro() {
+    if (!chrome.runtime.lastError) { return false; }
+    alertaBoxPro('Error', 'exclamation-triangle', 'N\u00E3o foi poss\u00EDvel salvar as configura\u00E7\u00F5es: ' + chrome.runtime.lastError.message);
+    return true;
+}
+
 function save_options(reload) {
     
 	var dataValues = [];
-    var checkInput = 0;
+    var tabelasDescartadas = 0;
     $('.options-table').each(function(indexT){
 		var input = {};
+        /* O contador e POR TABELA. Era de todas: um campo obrigatorio vazio na
+           primeira tabela descartava as seguintes, em silencio, e a base de
+           dados configurada desaparecia. */
+        var checkInput = 0;
 		$(this).find('.input-config-pro').each(function(indexI){
             $(this).removeClass('inputError');
 			var value = $(this).val();
@@ -107,16 +140,21 @@ function save_options(reload) {
                 input[inputName] = value;
             }
 		});
-		if ( checkInput == 0  ) { dataValues.push(input); }
+		if ( checkInput == 0  ) { dataValues.push(input); } else { tabelasDescartadas++; }
     });
     dataValues.push({configGeral: changeConfigGeral()});
-        
+
+    var comoTexto = JSON.stringify(dataValues);
+    if (!checkEspacoSyncPro(comoTexto)) { return; }
+
     chrome.storage.sync.set({
-        dataValues: JSON.stringify(dataValues)
+        dataValues: comoTexto
     }, function() {
-        // Update status to let user know options were saved.
-        if ( reload == true ) { 
-            alertaBoxPro('Sucess', 'check-circle', 'Configura\u00e7\u00f5es salvas com sucesso!');
+        if (checkErroSyncPro()) { return; }
+        if (tabelasDescartadas > 0) {
+            alertaBoxPro('Attencion', 'exclamation-triangle', 'As op\u00E7\u00F5es foram salvas, mas ' + tabelasDescartadas + ' base(s) de dados ficaram de fora porque h\u00E1 campo obrigat\u00F3rio em branco (marcado em vermelho).');
+        } else if ( reload == true ) { 
+            alertaBoxPro('Sucess', 'check-circle', 'Configura\u00E7\u00F5es salvas com sucesso!');
             //location.reload(true); 
         } else { 
             downloadFile(); 
