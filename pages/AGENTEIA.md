@@ -118,6 +118,42 @@ Há dois modelos para copiar em [skills-exemplo/](https://github.com/SEI-Pro/sei
 
 Para preferências curtas que valem para **toda** conversa — tratamento, estilo, o que sempre citar —, use **Instruções adicionais**, na seção Avançado.
 
+### Conectores: ferramentas de fora do SEI
+
+Skill ensina **como** a sua unidade trabalha. Conector dá ao agente **o que fazer fora do SEI**: consultar um sistema do órgão, uma base pública, um serviço que a sua equipe mantém. Tecnicamente é um **servidor MCP** — o mesmo padrão que o Claude e outros assistentes usam para se ligar a serviços.
+
+Cadastre em **Configuração → O que o agente pode → Conectores (MCP)**:
+
+| Campo | Para que serve |
+| ----- | -------------- |
+| **Nome** | Como você e o agente se referem ao conector |
+| **Endereço do servidor** | O endereço HTTP do servidor MCP. Só `https` (`http` vale apenas para `localhost`) |
+| **Autenticação** | Opcional: o nome e o valor do cabeçalho que o servidor exige (em geral `Authorization`) |
+
+Ao salvar, o SEI Pro conversa com o servidor, pede a lista de ferramentas e guarda. O navegador vai pedir a sua autorização para acessar aquele endereço — sem ela, nenhuma chamada é feita.
+
+#### A permissão é por ferramenta
+
+Em **Ferramentas**, cada uma tem três estados:
+
+| Estado | O que acontece |
+| ------ | -------------- |
+| **Sempre permitir** | O agente usa quando precisar, sem perguntar |
+| **Requer aprovação** | Aparece um cartão com o conector, a ferramenta e **exatamente o que vai ser enviado**; nada sai antes do seu clique |
+| **Bloqueado** | O agente não usa — e nem fica sabendo que a ferramenta existe |
+
+O estado padrão, inclusive para ferramenta que o servidor passar a oferecer depois, é **Requer aprovação**. Dá para desligar o conector inteiro pelo interruptor, sem perder o cadastro, e **excluir** leva embora o token guardado.
+
+#### O que sai do seu navegador
+
+O conteúdo que você mandar a um conector **sai do seu navegador para o endereço dele** — é um serviço de terceiro, fora do SEI e fora do SEI Pro. Por isso:
+
+* **dados pessoais vão mascarados**, como nas conversas: o servidor recebe `[PESSOA_1]`, não o nome;
+* na **primeira vez** que o agente usa um conector, ele pede a sua autorização explícita;
+* o endereço e o token ficam **só neste navegador**, como a chave do serviço de IA.
+
+Conector não escreve no SEI: para isso continuam valendo o cartão de aprovação e as regras da unidade.
+
 ### Nada é alterado sem a sua aprovação
 
 Quando o pedido implica mexer no processo, o agente **não executa**: ele monta um cartão com o que pretende fazer, item a item, mostrando o valor de antes e o de depois. Nada acontece enquanto você não clicar em **Aprovar e executar**.
