@@ -28,6 +28,8 @@ import { avaliarRegras, guardarRegras, listarRegras, recadoDoBloqueio, REGRAS_SU
 import { cabeMaisUma, gastoDeHoje, somarGastoDoDia, SEM_LIMITE, type Limites } from "./gasto";
 import { anotar, blocoDeMemoria, guardarMemoria, listarMemoria, MAX_TEXTO, type Lembranca } from "./memoria";
 import { descreverFrequencia, DIAS, guardarRotinas, listarRotinas, vencidas, type Rotina } from "./rotinas";
+import { guardarConectores, listarConectores, type Conector } from "../mcp/conectores";
+import { linhasDeConectores, toolsMcp } from "../mcp/tools";
 import {
   baixarColecao,
   baixarSkillSeMudou,
@@ -181,6 +183,9 @@ class App {
   /** Perguntas que o agente faz sozinho de tempos em tempos. */
   private rotinas: Rotina[] = [];
 
+  /** Servidores MCP que o usuário ligou (ver `mcp/conectores.ts`). */
+  private conectores: Conector[] = [];
+
   /** Fluxos mapeados no Estúdio de Fluxo, e o que o usuário mandou não sugerir. */
   private fluxos: Fluxo[] = [];
   private fluxosIgnorados: Ignorados = {};
@@ -221,6 +226,7 @@ class App {
     this.regras = await listarRegras();
     this.memoria = await listarMemoria();
     this.rotinas = await listarRotinas();
+    this.conectores = await listarConectores();
     this.fluxos = await listarFluxos();
     this.fluxosIgnorados = await listarIgnorados();
     void this.sincronizarSkills();
@@ -2162,15 +2168,33 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
   // ------------------------------------------------------------- conversa
 
   /** `mapa`: pseudônimos restaurados da sessão; sem ele, conversa nova. */
+  /**
+   * Ferramentas dos conectores MCP.
+   *
+   * Só a conversa principal as recebe. O agente auxiliar (`delegar`) fica de
+   * fora de propósito: a interface dele não tem como pedir autorização ao
+   * usuário, e ferramenta de conector pode ter efeito no mundo (abrir um
+   * chamado, criar uma página) — não é leitura inofensiva como as do SEI.
+   */
+  private toolsDeConectores(): ReturnType<typeof toolsMcp> {
+    return toolsMcp({
+      conectores: () => this.conectores,
+      guardar: async (c) => {
+        this.conectores = this.conectores.map((x) => (x.id === c.id ? c : x));
+        await guardarConectores(this.conectores);
+      },
+    });
+  }
+
   private criarMotor(mapa?: Pseudonimos): Motor {
     this.privacidade = mapa ?? new Pseudonimos({ nomes: this.config.nomes, cnpj: this.config.cnpj });
     return new Motor({
       provedor: criarProvedor({ servico: this.config.servico, url: this.config.url, chave: this.config.chave, modelo: this.config.modelo, ajustes: this.config.ajustes, cache: this.config.cache }),
-      tools: new RegistroTools([...TOOLS_SEI, ...toolsMotor(this.skills)]),
+      tools: new RegistroTools([...TOOLS_SEI, ...toolsMotor(this.skills), ...this.toolsDeConectores()]),
       ui: this.interfaceMotor(),
       privacidade: this.privacidade,
       sei: (op, args, sinal) => (op === "editores" ? Promise.resolve(this.ponte.editores()) : this.ponte.executar(op, args, sinal)),
-      sistema: (tela) => promptSistema(tela, new Date(), this.config.instrucoes, this.skills, blocoDeMemoria(this.memoria)),
+      sistema: (tela) => promptSistema(tela, new Date(), this.config.instrucoes, this.skills, blocoDeMemoria(this.memoria), linhasDeConectores(this.conectores)),
       delegar: (tarefa, sinal) => this.delegar(tarefa, sinal),
       lembrar: (fato) => this.lembrar(fato),
       regras: (passos) => {

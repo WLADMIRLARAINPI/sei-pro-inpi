@@ -7,6 +7,7 @@
 import { Pseudonimos } from "@nucleo/privacidade/anonimizar";
 import { s, validar } from "../src/motor/esquema";
 import { Motor, resolverReferencias } from "../src/motor/motor";
+import { promptSistema } from "../src/motor/prompt";
 import { Acumulador } from "../src/motor/provedor";
 import { definirTool, RegistroTools } from "../src/motor/tools";
 import type { DecisaoPlano, InterfaceMotor, Mensagem, PlanoPrevisto, Provedor, RespostaLLM } from "../src/motor/tipos";
@@ -342,6 +343,13 @@ export async function verificarMotor(): Promise<void> {
     await m.enviar("use o conector");
     checar("cada conector pergunta de novo (nao memoiza)", tipos.filter((x) => x === "conector").length === 2, tipos);
     checar("restrito continua perguntando uma vez por conversa", tipos.filter((x) => x === "restrito").length === 1, tipos);
+  }
+
+  secao("motor: prompt com conectores");
+  {
+    const texto = promptSistema(null, new Date(2026, 9, 1), "", [], "", '\n- Conectores do usuário: "Notion"');
+    checar("o trecho dos conectores entra no prompt", texto.includes("Conectores do usuário"), texto.slice(-200));
+    checar("sem conectores, o prompt nao muda", !promptSistema(null, new Date(2026, 9, 1)).includes("Conectores do usuário"));
   }
 
   secao("tools: contrato");
