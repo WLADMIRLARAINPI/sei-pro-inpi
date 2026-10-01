@@ -1,6 +1,7 @@
 import { verificarMotor } from "./verificar-motor";
 import { verificarProvedor } from "./verificar-provedor";
 import { verificarSkills } from "./verificar-skills";
+import { verificarMcp } from "./verificar-mcp";
 import { verificarDesfazer } from "./verificar-desfazer";
 import { verificarRegras } from "./verificar-regras";
 import { verificarCusto } from "./verificar-custo";
@@ -26,6 +27,7 @@ import { resumo } from "./util";
 await verificarMotor();
 await verificarProvedor();
 await verificarSkills();
+await verificarMcp();
 verificarDesfazer();
 verificarRegras();
 verificarCusto();
