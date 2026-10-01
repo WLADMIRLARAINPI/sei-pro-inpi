@@ -14,6 +14,7 @@
 
 import type { Destino } from "./cliente";
 import type { ToolMcp } from "./protocolo";
+import { ESPELHOS, espelhar } from "../painel/espelho";
 
 export type Permissao = "sempre" | "aprovar" | "bloqueado";
 
@@ -90,7 +91,9 @@ export async function listarConectores(): Promise<Conector[]> {
 }
 
 export async function guardarConectores(lista: Conector[]): Promise<void> {
-  await chrome.storage.local.set({ [CHAVE]: lista.slice(0, MAX_CONECTORES) });
+  const guardada = lista.slice(0, MAX_CONECTORES);
+  await chrome.storage.local.set({ [CHAVE]: guardada });
+  void espelhar(ESPELHOS.conectores, guardada);
 }
 
 /** "Serviços Compras.GOV" → "servicos_compras_gov". */

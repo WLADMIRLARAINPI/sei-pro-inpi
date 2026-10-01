@@ -11,6 +11,8 @@
  * nome de pessoa. Memória é sobre como a unidade trabalha — o resto se lê no
  * SEI, que é a fonte da verdade e muda sem avisar.
  */
+import { ESPELHOS, espelhar } from "./espelho";
+
 
 export interface Lembranca {
   id: string;
@@ -37,7 +39,9 @@ export async function listarMemoria(): Promise<Lembranca[]> {
 }
 
 export async function guardarMemoria(lista: Lembranca[]): Promise<void> {
-  await chrome.storage.local.set({ [CHAVE]: lista.slice(-MAX_LEMBRANCAS) });
+  const guardada = lista.slice(-MAX_LEMBRANCAS);
+  await chrome.storage.local.set({ [CHAVE]: guardada });
+  void espelhar(ESPELHOS.memoria, guardada);
 }
 
 const normalizar = (t: string) =>

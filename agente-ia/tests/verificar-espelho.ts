@@ -20,6 +20,11 @@ import type { Config } from "../src/painel/main";
 import type { Regra } from "../src/painel/regras";
 import type { Rotina } from "../src/painel/rotinas";
 import type { SkillUsuario } from "../src/painel/skills";
+import { guardarConectores } from "../src/mcp/conectores";
+import { guardarMemoria } from "../src/painel/memoria";
+import { guardarRegras } from "../src/painel/regras";
+import { guardarRotinas } from "../src/painel/rotinas";
+import { guardarSkills } from "../src/painel/skills";
 import { checar, secao } from "./util";
 
 const skill = (s: Partial<SkillUsuario> = {}): SkillUsuario => ({
@@ -284,5 +289,68 @@ export async function verificarEspelhoSync(): Promise<void> {
     checar(`cenario pesado cabe nos 100 KB (${bytes} bytes)`, bytes < 102_400, bytes);
     checar(`nenhum item passa de 8 KB (maior: ${maior})`, maior < 8_192, maior);
     checar(`menos de 512 itens (${Object.keys(dados).length})`, Object.keys(dados).length < 512);
+  }
+}
+
+/** Duas áreas separadas, como no navegador de verdade. */
+function duasAreas() {
+  const local: Record<string, unknown> = {};
+  const sync: Record<string, unknown> = {};
+  const area = (dados: Record<string, unknown>) => ({
+    get: async (chaves?: string | string[] | null) => {
+      if (!chaves) return { ...dados };
+      const lista = Array.isArray(chaves) ? chaves : [chaves];
+      return Object.fromEntries(lista.filter((k) => k in dados).map((k) => [k, dados[k]]));
+    },
+    set: async (itens: Record<string, unknown>) => void Object.assign(dados, itens),
+    remove: async (chaves: string | string[]) => {
+      for (const k of Array.isArray(chaves) ? chaves : [chaves]) delete dados[k];
+    },
+    getBytesInUse: async () => JSON.stringify(dados).length,
+  });
+  (globalThis as { chrome?: unknown }).chrome = { storage: { local: area(local), sync: area(sync) } };
+  return { local, sync };
+}
+
+/**
+ * A ligação: `guardarX` grava no local E espelha no sync.
+ *
+ * É o passo que faz a função existir de verdade — sem ele, a camada de
+ * espelho seria código correto que ninguém chama.
+ */
+export async function verificarEspelhoNosModulos(): Promise<void> {
+  secao("espelho: guardar grava nos dois lugares");
+  {
+    const { local, sync } = duasAreas();
+    await guardarRegras([regra("a")]);
+    await new Promise((r) => setTimeout(r, 10));
+    checar("a regra foi para o local", Array.isArray(local.agenteIA_regras), Object.keys(local));
+    checar("e espelhada no sync", "spro_regra_a" in sync, Object.keys(sync));
+  }
+  {
+    const { local, sync } = duasAreas();
+    await guardarSkills([skill({ texto: "texto grande que nao deve viajar" })]);
+    await new Promise((r) => setTimeout(r, 10));
+    checar("o texto da skill fica no local", JSON.stringify(local.agenteIA_skills).includes("nao deve viajar"));
+    checar("e NAO no sync", !JSON.stringify(sync).includes("nao deve viajar"), Object.keys(sync));
+  }
+  {
+    const { local, sync } = duasAreas();
+    await guardarConectores([conector()]);
+    await new Promise((r) => setTimeout(r, 10));
+    checar("o token do conector fica no local", JSON.stringify(local.agenteIA_mcp).includes("Bearer segredo"));
+    checar("e NAO no sync", !JSON.stringify(sync).includes("Bearer segredo"), JSON.stringify(sync).slice(0, 120));
+  }
+  {
+    const { sync } = duasAreas();
+    await guardarRotinas([rotina()]);
+    await new Promise((r) => setTimeout(r, 10));
+    checar("o historico da rotina nao viaja", !JSON.stringify(sync).includes("oito processos"), JSON.stringify(sync).slice(0, 160));
+  }
+  {
+    const { local, sync } = duasAreas();
+    await guardarMemoria(Array.from({ length: 3 }, (_, i) => ({ id: `l${i}`, texto: "lembrete", quando: 1, origem: "usuario" as const })));
+    await new Promise((r) => setTimeout(r, 10));
+    checar("cada lembranca ganha a sua chave", Object.keys(sync).length === 3 && Array.isArray(local.agenteIA_memoria), Object.keys(sync));
   }
 }

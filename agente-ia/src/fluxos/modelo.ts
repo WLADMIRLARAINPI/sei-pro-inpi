@@ -15,6 +15,8 @@
  * variações por etapa ("Nota Técnica", "NT"): os títulos mudam de órgão para
  * órgão, e um casamento exato só funcionaria no órgão de quem escreveu.
  */
+import { ESPELHOS, espelhar } from "../painel/espelho";
+
 
 export interface Fluxo {
   id: string;
@@ -157,6 +159,7 @@ export async function listarFluxos(): Promise<Fluxo[]> {
 
 export async function guardarFluxos(lista: Fluxo[]): Promise<void> {
   await chrome.storage.local.set({ [CHAVE_FLUXOS]: lista });
+  void espelhar(ESPELHOS.fluxos, lista);
 }
 
 export async function listarIgnorados(): Promise<Ignorados> {

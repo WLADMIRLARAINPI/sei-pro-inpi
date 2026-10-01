@@ -13,6 +13,8 @@
  * para atualizar quando o arquivo mudar.
  */
 
+import { ESPELHOS, espelhar } from "./espelho";
+
 /**
  * Coleção de skills da equipe: uma PASTA de um repositório público, de onde
  * todas as skills `.md` vêm de uma vez.
@@ -20,6 +22,8 @@
  * É como uma unidade inteira passa a trabalhar igual: quem cuida do padrão
  * edita o repositório, e cada pessoa recebe. As skills que vêm daqui são
  * marcadas com `colecao` e não se editam à mão — a origem manda.
+import { ESPELHOS, espelhar } from "./espelho";
+
  */
 export interface ColecaoSkills {
   id: string;
@@ -86,6 +90,8 @@ export async function listarSkills(): Promise<SkillUsuario[]> {
 
 export async function guardarSkills(lista: SkillUsuario[]): Promise<void> {
   await chrome.storage.local.set({ [CHAVE]: lista });
+  // Espelha DEPOIS de gravar aqui: o local é a fonte, o sync é cópia.
+  void espelhar(ESPELHOS.skills, lista);
 }
 
 /** "Despacho de Encaminhamento" → "despacho-de-encaminhamento". */
@@ -270,6 +276,7 @@ export async function listarColecoes(): Promise<ColecaoSkills[]> {
 
 export async function guardarColecoes(lista: ColecaoSkills[]): Promise<void> {
   await chrome.storage.local.set({ [CHAVE_COLECOES]: lista });
+  void espelhar(ESPELHOS.colecoes, lista);
 }
 
 /** Dono, repositório, branch e pasta de um link do GitHub. */

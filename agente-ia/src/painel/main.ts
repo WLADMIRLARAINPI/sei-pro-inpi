@@ -46,6 +46,7 @@ import { guardarConectores, listarConectores, type Conector } from "../mcp/conec
 import { linhasDeConectores, toolsMcp } from "../mcp/tools";
 import { cartaoExterno, secaoConectores } from "./mcp-ui";
 import { secaoRotinas } from "./rotinas-ui";
+import { aoAvisar, aplicarConfigDoSync, aplicarDoSync, CHAVE_MIGRADO, espelharConfig, ESPELHOS, unirNaPrimeiraVez } from "./espelho";
 import {
   baixarColecao,
   baixarSkillSeMudou,
@@ -199,6 +200,22 @@ class App {
   /** Perguntas que o agente faz sozinho de tempos em tempos. */
   private rotinas: Rotina[] = [];
 
+  /** O aviso da cota de sincronização aparece uma vez por sessão. */
+  private avisouDaCota = false;
+
+  /**
+   * Trava de reentrância da sincronização.
+   *
+   * `aplicarSincronizacao` grava no `local`, o que faz cada `guardarX`
+   * espelhar, e o espelho dispara o `onChanged` da área `sync` — que chamaria
+   * `aplicarSincronizacao` outra vez. O `espelhar` só grava o que mudou, então
+   * a cadeia morreria na segunda volta; esta trava a corta na primeira.
+   */
+  private sincronizando = false;
+
+  /** Redesenhos da configuração aberta, para o que vem do sync aparecer na hora. */
+  private redesenharConfig: Array<() => void> = [];
+
   /** Servidores MCP que o usuário ligou (ver `mcp/conectores.ts`). */
   private conectores: Conector[] = [];
 
@@ -263,15 +280,22 @@ class App {
     this.conectores = await listarConectores();
     this.fluxos = await listarFluxos();
     this.fluxosIgnorados = await listarIgnorados();
+    await this.aplicarSincronizacao();
     void this.sincronizarSkills();
     void this.sincronizarColecoes();
     this.ponte.aoMudar(() => this.atualizarAba());
     // O Estúdio de Fluxo é outra página: quando o usuário salva um fluxo lá, o
     // painel precisa passar a usá-lo sem esperar um recarregamento.
     chrome.storage.onChanged.addListener((mud, area) => {
-      if (area !== "local" || !mud[CHAVE_FLUXOS]) return;
-      this.fluxos = (mud[CHAVE_FLUXOS].newValue as Fluxo[]) ?? [];
-      void this.avaliarFluxos();
+      if (area === "local" && mud[CHAVE_FLUXOS]) {
+        this.fluxos = (mud[CHAVE_FLUXOS].newValue as Fluxo[]) ?? [];
+        void this.avaliarFluxos();
+        return;
+      }
+      // Outro computador mudou a configuração: traz para cá sem recarregar.
+      // O `espelhar` deste navegador também dispara isto; `aplicarDoSync` é
+      // idempotente, então o pior caso é uma leitura a mais.
+      if (area === "sync" && Object.keys(mud).some((k) => k.startsWith("spro_"))) void this.aplicarSincronizacao();
     });
     await this.telaConversa();
     void this.atualizarCambio();
@@ -1145,6 +1169,9 @@ class App {
       pedirPermissaoDeAviso: () => this.pedirPermissaoDeAviso(),
     });
     const secaoRotinasEl = rotinasUI.elemento;
+    // Enquanto a configuração está aberta, o que chega do sync redesenha as
+    // listas; ao fechar, os redesenhos saem (o DOM deixou de existir).
+    this.redesenharConfig = [() => rotinasUI.redesenhar(), () => conectoresUI.redesenhar()];
 
     // ------------------------------------------------- memória da unidade
     const usarMemoria = h("input", { type: "checkbox", class: "switch", ...(this.config.memoria ? { checked: true } : {}) });
@@ -1513,6 +1540,8 @@ class App {
       ],
       acoes: [status, obrigatorio ? null : h("button", { onclick: () => dlg.close() }, "Cancelar"), salvar],
     });
+
+    dlg.addEventListener("close", () => void (this.redesenharConfig = []), { once: true });
 
     salvar.addEventListener("click", async () => {
       const erro = (texto: string) => {
@@ -2234,10 +2263,69 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
     });
   }
 
+  /**
+   * Traz do `storage.sync` o que foi configurado em outro computador.
+   *
+   * Na primeira vez é UNIÃO (ninguém tem chaves `spro_*` antes desta versão, e
+   * apagar o que ainda não subiu seria perder cadastro); depois, o `sync` manda
+   * — inclusive na exclusão, que é a chave deixar de existir lá.
+   */
+  private async aplicarSincronizacao(): Promise<void> {
+    if (this.sincronizando) return;
+    this.sincronizando = true;
+    const marca = await chrome.storage.local.get(CHAVE_MIGRADO).catch(() => ({}) as Record<string, unknown>);
+    const primeira = !marca?.[CHAVE_MIGRADO];
+    aoAvisar((texto) => {
+      if (this.avisouDaCota) return;
+      this.avisouDaCota = true;
+      this.adicionar({ tipo: "aviso", texto });
+    });
+    try {
+      if (primeira) {
+        this.skills = await unirNaPrimeiraVez(ESPELHOS.skills, this.skills);
+        this.colecoes = await unirNaPrimeiraVez(ESPELHOS.colecoes, this.colecoes);
+        this.regras = await unirNaPrimeiraVez(ESPELHOS.regras, this.regras);
+        this.memoria = await unirNaPrimeiraVez(ESPELHOS.memoria, this.memoria);
+        this.rotinas = await unirNaPrimeiraVez(ESPELHOS.rotinas, this.rotinas);
+        this.conectores = await unirNaPrimeiraVez(ESPELHOS.conectores, this.conectores);
+        this.fluxos = await unirNaPrimeiraVez(ESPELHOS.fluxos, this.fluxos);
+        void espelharConfig(this.config);
+        await chrome.storage.local.set({ [CHAVE_MIGRADO]: Date.now() });
+      } else {
+        this.skills = (await aplicarDoSync(ESPELHOS.skills, this.skills)).lista;
+        this.colecoes = (await aplicarDoSync(ESPELHOS.colecoes, this.colecoes)).lista;
+        this.regras = (await aplicarDoSync(ESPELHOS.regras, this.regras)).lista;
+        this.memoria = (await aplicarDoSync(ESPELHOS.memoria, this.memoria)).lista;
+        this.rotinas = (await aplicarDoSync(ESPELHOS.rotinas, this.rotinas)).lista;
+        this.conectores = (await aplicarDoSync(ESPELHOS.conectores, this.conectores)).lista;
+        this.fluxos = (await aplicarDoSync(ESPELHOS.fluxos, this.fluxos)).lista;
+      }
+      const cfg = await aplicarConfigDoSync(this.config);
+      if (cfg.mudou) this.config = cfg.config;
+      // O que veio de fora tem de ficar gravado aqui também: é do `local` que
+      // a conversa lê.
+      await Promise.all([
+        guardarSkills(this.skills),
+        guardarColecoes(this.colecoes),
+        guardarRegras(this.regras),
+        guardarMemoria(this.memoria),
+        guardarRotinas(this.rotinas),
+        guardarConectores(this.conectores),
+      ]);
+    } catch {
+      /* sem sincronização (Firefox sem conta, API ausente): segue só com o local */
+    } finally {
+      this.sincronizando = false;
+    }
+    for (const redesenhar of this.redesenharConfig) redesenhar();
+  }
+
   /** Salva a configuração e refaz o motor mantendo a conversa e os pseudônimos. */
   private async aplicarConfig(nova: Config): Promise<void> {
     this.config = nova;
     await chrome.storage.local.set({ [CHAVE_CONFIG]: this.config });
+    // A configuração acompanha a conta do navegador; a chave do serviço, não.
+    void espelharConfig(this.config);
     this.motor?.parar();
     const historico = this.motor?.mensagens() ?? [];
     this.motor = this.criarMotor(Pseudonimos.importar(this.privacidade.exportar(), { nomes: nova.nomes, cnpj: nova.cnpj }));

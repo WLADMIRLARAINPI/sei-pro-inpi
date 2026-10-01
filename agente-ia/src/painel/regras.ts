@@ -10,6 +10,8 @@
  * Por que não deixar isso para o prompt: instrução no prompt é pedido, e
  * modelo às vezes não atende. Política de órgão não pode depender disso.
  */
+import { ESPELHOS, espelhar } from "./espelho";
+
 
 export type EfeitoRegra = "bloquear" | "avisar";
 
@@ -40,6 +42,7 @@ export async function listarRegras(): Promise<Regra[]> {
 
 export async function guardarRegras(lista: Regra[]): Promise<void> {
   await chrome.storage.local.set({ [CHAVE]: lista });
+  void espelhar(ESPELHOS.regras, lista);
 }
 
 /** Modelos prontos, para a unidade não começar do zero. */

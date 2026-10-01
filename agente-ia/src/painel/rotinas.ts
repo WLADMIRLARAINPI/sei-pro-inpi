@@ -18,6 +18,7 @@
  */
 
 import type { Efeito } from "../motor/tipos";
+import { ESPELHOS, espelhar } from "./espelho";
 
 export type Frequencia = "manual" | "horaria" | "diaria" | "uteis" | "semanal" | "mensal";
 
@@ -129,6 +130,7 @@ export async function listarRotinas(): Promise<Rotina[]> {
 
 export async function guardarRotinas(lista: Rotina[]): Promise<void> {
   await chrome.storage.local.set({ [CHAVE]: lista });
+  void espelhar(ESPELHOS.rotinas, lista);
 }
 
 /** Anota a execução no histórico (a mais nova primeiro) e marca `ultimaEm`. */
