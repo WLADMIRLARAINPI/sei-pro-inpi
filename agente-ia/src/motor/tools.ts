@@ -16,6 +16,21 @@ export interface ContextoTool {
   estado: EstadoConversa;
   /** Pede consentimento para conteúdo restrito (uma vez por conversa). */
   consentirRestrito(detalhe: string): Promise<boolean>;
+  /**
+   * Pede consentimento para enviar dados a um conector MCP.
+   *
+   * Separado do restrito de propósito: quem autorizou ler um documento
+   * restrito não autorizou, com isso, mandar conteúdo a um serviço de
+   * terceiro. Aqui não há memória por conversa — quem guarda o "já
+   * consentido" é o próprio conector.
+   */
+  consentirConector(detalhe: string): Promise<boolean>;
+  /**
+   * Mascara dados pessoais. O motor reidrata os argumentos antes de executar,
+   * para a escrita no SEI levar o valor real: o que sair daqui para fora do
+   * SEI precisa ser mascarado de novo.
+   */
+  anonimizar(texto: string): string;
   /** Registra nomes de pessoas vistos nos metadados, para o dicionário da anonimização. */
   pessoasVistas(nomes: string[]): void;
   /** Interface do painel (tools internas: perguntar, tarefas). */
@@ -51,7 +66,8 @@ export interface DefTool<A extends Record<string, unknown> = Record<string, unkn
 }
 
 export function definirTool<A extends Record<string, unknown>>(d: DefTool<A>): DefTool<Record<string, unknown>> {
-  if (d.efeito !== "leitura" && d.efeito !== "interna" && !d.previsualizar) {
+  const escreveNoSei = d.efeito === "escrita" || d.efeito === "irreversivel" || d.efeito === "assinatura";
+  if (escreveNoSei && !d.previsualizar) {
     throw new Error(`A tool ${d.nome} escreve no SEI e precisa de previsualizar().`);
   }
   if (!/^[a-z][a-z0-9_]{2,63}$/.test(d.nome)) throw new Error(`Nome de tool inv\u00E1lido: ${d.nome}`);

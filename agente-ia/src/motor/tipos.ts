@@ -62,9 +62,12 @@ export interface Provedor {
  * - `escrita`: só dentro de plano aprovado;
  * - `irreversivel`: plano + confirmação explícita ("entendo que não dá para desfazer");
  * - `assinatura`: plano + cargo e senha digitados pelo usuário, fora do modelo;
- * - `interna`: do próprio motor (tarefas, perguntar, plano), sem tocar no SEI.
+ * - `interna`: do próprio motor (tarefas, perguntar, plano), sem tocar no SEI;
+ * - `externo`: sai do navegador para um conector MCP do usuário, mas NÃO toca
+ *   o SEI — não tem prévia nem plano, e a autorização é a permissão que o
+ *   usuário deu àquela ferramenta do conector.
  */
-export type Efeito = "leitura" | "escrita" | "irreversivel" | "assinatura" | "interna";
+export type Efeito = "leitura" | "escrita" | "irreversivel" | "assinatura" | "interna" | "externo";
 
 /** Prévia de uma escrita, do jeito que o painel mostra ao usuário. */
 export interface PreviaItem {
@@ -103,6 +106,20 @@ export interface DecisaoPlano {
   assinatura?: { cargo: string; senha: string };
 }
 
+/** Uma chamada a um conector MCP esperando autorização do usuário. */
+export interface PedidoExterno {
+  conector: string;
+  tool: string;
+  descricao: string;
+  argumentos: Record<string, unknown>;
+}
+
+export interface DecisaoExterna {
+  permitido: boolean;
+  /** Gravar "sempre permitir" para esta ferramenta. */
+  sempre?: boolean;
+}
+
 export interface Tarefa {
   titulo: string;
   estado: "pendente" | "fazendo" | "feita";
@@ -118,7 +135,14 @@ export interface InterfaceMotor {
   escritaFeita?(id: string, tool: string, args: Record<string, unknown>, resultado: unknown): void;
   aprovarPlano(p: PlanoPrevisto): Promise<DecisaoPlano>;
   progressoPlano(passo: number, total: number, rotulo: string): void;
-  consentir(tipo: "restrito", detalhe: string): Promise<boolean>;
+  /**
+   * `restrito`: documento de acesso restrito, uma vez por conversa.
+   * `conector`: primeira saída de dados para um conector MCP — pergunta por
+   * conector, sem memorizar junto do restrito (são autorizações diferentes).
+   */
+  consentir(tipo: "restrito" | "conector", detalhe: string): Promise<boolean>;
+  /** Autoriza uma chamada a conector MCP (só quando a permissão é "aprovar"). */
+  aprovarExterno?(p: PedidoExterno): Promise<DecisaoExterna>;
   perguntar(pergunta: string, opcoes: string[]): Promise<string>;
   tarefas(lista: Tarefa[]): void;
   uso(total: Uso): void;

@@ -8,7 +8,7 @@ import { Pseudonimos } from "@nucleo/privacidade/anonimizar";
 import { s, validar } from "../src/motor/esquema";
 import { Motor, resolverReferencias } from "../src/motor/motor";
 import { Acumulador } from "../src/motor/provedor";
-import { RegistroTools } from "../src/motor/tools";
+import { definirTool, RegistroTools } from "../src/motor/tools";
 import type { DecisaoPlano, InterfaceMotor, Mensagem, PlanoPrevisto, Provedor, RespostaLLM } from "../src/motor/tipos";
 import { TOOLS_MOTOR } from "../src/tools/motor";
 import { TOOLS_SEI } from "../src/tools/sei";
@@ -281,6 +281,68 @@ export async function verificarMotor(): Promise<void> {
     },
   } as never)) as { respostas: Array<{ erro?: string }> };
   checar("falha do auxiliar volta como erro daquela tarefa", comFalha.respostas[0].erro === "o auxiliar caiu");
+
+  secao("motor: tool externa");
+  {
+    const externa = definirTool({
+      nome: "mcp_chamar",
+      descricao: "chama uma ferramenta de conector do usuario, fora do SEI, com o que o modelo mandar",
+      parametros: s.objeto({ tool: s.texto() }),
+      efeito: "externo",
+      rotulo: () => "Conector: buscar",
+      executar: async (_a, ctx) => `visto: ${ctx.anonimizar("o CPF 529.982.247-25")}`,
+    });
+    const vistos: Mensagem[][] = [];
+    const painel = ui();
+    const m = new Motor({
+      provedor: provedor([() => ({ texto: "", chamadas: [chamada("mcp_chamar", { tool: "buscar" })], fim: "tool_calls" })], vistos),
+      tools: new RegistroTools([externa]),
+      ui: painel,
+      privacidade: new Pseudonimos(),
+      sei: seiFalso([]),
+      sistema: () => "sistema",
+    });
+    await m.enviar("use o conector");
+    checar("tool externa NAO vira plano", painel.planos.length === 0, painel.planos);
+    const resultado = m.mensagens().find((x) => x.role === "tool") as { content: string } | undefined;
+    checar("executou", Boolean(resultado));
+    checar(
+      "recebe o anonimizador no contexto",
+      Boolean(resultado) && resultado!.content.includes("[CPF_1]") && !resultado!.content.includes("529.982.247-25"),
+      resultado?.content,
+    );
+  }
+
+  secao("motor: consentimento de conector e proprio");
+  {
+    const tipos: string[] = [];
+    const duasVezes = definirTool({
+      nome: "mcp_chamar",
+      descricao: "chama uma ferramenta de conector do usuario duas vezes, para provar que o consentimento nao e memoizado",
+      parametros: s.objeto({}),
+      efeito: "externo",
+      rotulo: () => "Conector",
+      executar: async (_a, ctx) => {
+        await ctx.consentirConector("primeiro conector");
+        await ctx.consentirConector("segundo conector");
+        await ctx.consentirRestrito("documento restrito");
+        await ctx.consentirRestrito("outro documento restrito");
+        return "ok";
+      },
+    });
+    const painel = { ...ui(), consentir: async (tipo: "restrito" | "conector") => (tipos.push(tipo), true) };
+    const m = new Motor({
+      provedor: provedor([() => ({ texto: "", chamadas: [chamada("mcp_chamar", {})], fim: "tool_calls" })], []),
+      tools: new RegistroTools([duasVezes]),
+      ui: painel,
+      privacidade: new Pseudonimos(),
+      sei: seiFalso([]),
+      sistema: () => "sistema",
+    });
+    await m.enviar("use o conector");
+    checar("cada conector pergunta de novo (nao memoiza)", tipos.filter((x) => x === "conector").length === 2, tipos);
+    checar("restrito continua perguntando uma vez por conversa", tipos.filter((x) => x === "restrito").length === 1, tipos);
+  }
 
   secao("tools: contrato");
   checar("toda escrita tem previa", tools.todas().every((t) => t.efeito === "leitura" || t.efeito === "interna" || typeof t.previsualizar === "function"));
