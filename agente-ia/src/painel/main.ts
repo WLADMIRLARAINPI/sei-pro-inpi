@@ -1649,9 +1649,10 @@ class App {
         ...(frequencia.value === "semanal" ? { diaSemana: Number(diaSemana.value) } : {}),
         ...(frequencia.value === "mensal" ? { diaMes: Math.min(28, Math.max(1, Number(diaMes.value) || 1)) } : {}),
         ativa: rotina?.ativa ?? true,
+        alcance: rotina?.alcance ?? "leitura",
         // Rotina nova não dispara retroativamente: conta a partir de agora.
         ultimaEm: rotina?.ultimaEm ?? Date.now(),
-        ...(rotina?.ultimoResultado ? { ultimoResultado: rotina.ultimoResultado } : {}),
+        ...(rotina?.ultimas?.length ? { ultimas: rotina.ultimas } : {}),
       };
       this.rotinas = rotina ? this.rotinas.map((x) => (x.id === rotina.id ? nova : x)) : [...this.rotinas, nova];
       await guardarRotinas(this.rotinas);

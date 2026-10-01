@@ -5,7 +5,16 @@
  * acumular execuções de quem ficou uma semana fora.
  */
 
-import { descreverFrequencia, vencidas, vencimento, type Rotina } from "../src/painel/rotinas";
+import {
+  avaliarPassos,
+  descreverFrequencia,
+  MAX_EXECUCOES,
+  normalizarRotina,
+  registrarExecucao,
+  vencidas,
+  vencimento,
+  type Rotina,
+} from "../src/painel/rotinas";
 import { checar, secao } from "./util";
 
 const rotina = (r: Partial<Rotina> = {}): Rotina => ({
@@ -15,6 +24,7 @@ const rotina = (r: Partial<Rotina> = {}): Rotina => ({
   frequencia: "diaria",
   hora: "08:00",
   ativa: true,
+  alcance: "leitura",
   ...r,
 });
 
@@ -55,4 +65,89 @@ export function verificarRotinas(): void {
   checar("diaria", descreverFrequencia(rotina()) === "todo dia, a partir das 08:00");
   checar("semanal diz o dia", descreverFrequencia(rotina({ frequencia: "semanal", diaSemana: 5 })).includes("sexta"));
   checar("mensal diz o dia do mes", descreverFrequencia(rotina({ frequencia: "mensal", diaMes: 10 })).includes("dia 10"));
+
+  secao("rotinas: horaria");
+  const horaria = rotina({ frequencia: "horaria" });
+  const dezEmPonto = new Date(2026, 8, 23, 10, 0);
+  const dezEMeia = new Date(2026, 8, 23, 10, 30);
+  checar("sem nunca ter rodado, vence", vencidas([horaria], dezEMeia).length === 1);
+  checar("a janela e a hora cheia", vencimento(horaria, dezEMeia)?.getMinutes() === 0);
+  const rodou10h05 = rotina({ frequencia: "horaria", ultimaEm: new Date(2026, 8, 23, 10, 5).getTime() });
+  checar("nao repete na mesma hora", vencidas([rodou10h05], dezEMeia).length === 0);
+  const rodou9h59 = rotina({ frequencia: "horaria", ultimaEm: new Date(2026, 8, 23, 9, 59).getTime() });
+  checar("hora nova vence de novo", vencidas([rodou9h59], dezEmPonto).length === 1);
+
+  secao("rotinas: dias uteis");
+  const uteis = rotina({ frequencia: "uteis" });
+  checar("quarta depois da hora vence", vencidas([uteis], quarta10h).length === 1);
+  checar("quarta antes da hora nao vence", vencidas([uteis], quarta7h).length === 0);
+  const sabado = new Date(2026, 8, 26, 10, 0);
+  const domingo = new Date(2026, 8, 27, 10, 0);
+  checar("sabado nao vence", vencidas([uteis], sabado).length === 0);
+  checar("domingo nao vence", vencidas([uteis], domingo).length === 0);
+  const segunda = new Date(2026, 8, 28, 10, 0);
+  const rodouSexta = rotina({ frequencia: "uteis", ultimaEm: new Date(2026, 8, 25, 9, 0).getTime() });
+  checar("segunda cobre o fim de semana com UMA execucao", vencidas([rodouSexta], segunda).length === 1);
+
+  secao("rotinas: manual");
+  checar("manual nunca vence", vencidas([rotina({ frequencia: "manual" })], quarta10h).length === 0);
+  checar("manual nao tem vencimento", vencimento(rotina({ frequencia: "manual" }), quarta10h) === null);
+  checar("manual se descreve", descreverFrequencia(rotina({ frequencia: "manual" })) === "quando voc\u00EA mandar");
+  checar("horaria se descreve", descreverFrequencia(rotina({ frequencia: "horaria" })) === "a cada hora");
+  checar("uteis diz que nao conta feriado", /feriado/.test(descreverFrequencia(rotina({ frequencia: "uteis" }))));
+
+  secao("rotinas: instrucoes por skill");
+  checar("sem pergunta mas com skill, vence", vencidas([rotina({ pergunta: "  ", skills: ["s1"] })], quarta10h).length === 1);
+  checar("sem pergunta e sem skill, nao vence", vencidas([rotina({ pergunta: " ", skills: [] })], quarta10h).length === 0);
+
+  secao("rotinas: rotina gravada na versao anterior");
+  const antiga = normalizarRotina({
+    id: "velha",
+    nome: "Parados",
+    pergunta: "liste",
+    frequencia: "diaria",
+    hora: "08:00",
+    ativa: true,
+    ultimaEm: 1_700_000_000_000,
+    ultimoResultado: "8 processos parados",
+  });
+  checar("continua valendo", antiga !== null);
+  checar("nasce como leitura", antiga?.alcance === "leitura");
+  checar("o ultimo resultado vira execucao", antiga?.ultimas?.[0].resumo === "8 processos parados", antiga?.ultimas);
+  checar("frequencia desconhecida e recusada", normalizarRotina({ id: "x", nome: "x", pergunta: "x", frequencia: "a cada lua", hora: "08:00", ativa: true }) === null);
+  checar(
+    "alcance desconhecido cai para leitura",
+    normalizarRotina({ id: "y", nome: "y", pergunta: "y", frequencia: "diaria", hora: "08:00", ativa: true, alcance: "tudo" })?.alcance === "leitura",
+  );
+  checar(
+    "rotina autonoma gravada e lida com o aviso ligado",
+    normalizarRotina({ id: "z", nome: "z", pergunta: "z", frequencia: "diaria", hora: "08:00", ativa: true, alcance: "autonoma", autorizadas: ["processo_marcador"] })?.avisar === true,
+  );
+
+  secao("rotinas: historico de execucoes");
+  let comHistorico = rotina();
+  for (let i = 0; i < 12; i += 1) comHistorico = registrarExecucao(comHistorico, { em: 1000 + i, ok: true, resumo: `r${i}`, custo: 0.01 });
+  checar("guarda no maximo 10", comHistorico.ultimas?.length === MAX_EXECUCOES, comHistorico.ultimas?.length);
+  checar("a mais nova vem primeiro", comHistorico.ultimas?.[0].resumo === "r11", comHistorico.ultimas?.[0]);
+  checar("marca a ultima execucao", comHistorico.ultimaEm === 1011);
+
+  secao("rotinas: cercas da rotina autonoma");
+  const auto = (autorizadas: string[]) => rotina({ alcance: "autonoma", autorizadas });
+  const passo = (tool: string, efeito: "escrita" | "irreversivel" | "assinatura" | "leitura") => ({ tool, efeito } as const);
+
+  checar("tool autorizada passa", avaliarPassos(auto(["processo_marcador"]), [passo("processo_marcador", "escrita")]).aprovado);
+  const fora = avaliarPassos(auto(["processo_marcador"]), [passo("documento_excluir", "escrita")]);
+  checar("tool fora da lista reprova o plano inteiro", !fora.aprovado && /n\u00E3o est\u00E1/i.test(fora.motivo ?? ""), fora);
+  const irrev = avaliarPassos(auto(["documento_excluir"]), [passo("documento_excluir", "irreversivel")]);
+  checar("irreversivel nunca passa, mesmo autorizada", !irrev.aprovado && /irrevers\u00EDvel/i.test(irrev.motivo ?? ""), irrev);
+  const assina = avaliarPassos(auto(["documento_assinar"]), [passo("documento_assinar", "assinatura")]);
+  checar("assinatura nunca passa", !assina.aprovado && /assinatura/i.test(assina.motivo ?? ""), assina);
+  const misto = avaliarPassos(auto(["processo_marcador"]), [passo("processo_marcador", "escrita"), passo("documento_excluir", "irreversivel")]);
+  checar("um passo barrado reprova o plano todo", !misto.aprovado, misto);
+  checar("autonoma sem lista de autorizadas nao escreve nada", !avaliarPassos(rotina({ alcance: "autonoma" }), [passo("processo_marcador", "escrita")]).aprovado);
+  const soLeitura = avaliarPassos(rotina(), [passo("processo_marcador", "escrita")]);
+  checar("rotina de leitura reprova qualquer escrita", !soLeitura.aprovado && /leitura/i.test(soLeitura.motivo ?? ""), soLeitura);
+  const paraAprovar = avaliarPassos(rotina({ alcance: "aprovar" }), [passo("processo_marcador", "escrita")]);
+  checar("alcance aprovar nao decide sozinho", !paraAprovar.aprovado && /aprova\u00E7\u00E3o do usu\u00E1rio/i.test(paraAprovar.motivo ?? ""), paraAprovar);
+  checar("plano so de leitura passa em qualquer alcance", avaliarPassos(rotina(), [passo("processos_listar", "leitura")]).aprovado);
 }
