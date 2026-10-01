@@ -609,3 +609,12 @@ dialog.modal[open]::backdrop { background: rgba(12, 16, 24, .42); backdrop-filte
 .args-externo { white-space: pre-wrap; word-break: break-word; max-height: 40vh; overflow: auto; font-size: 12px; background: var(--superficie-2); border: 1px solid var(--linha); border-radius: var(--r2); padding: 8px 10px; margin: 0; }
 .skill.conector .skill-texto { gap: 3px 8px; }
 .skill select { font-size: 11.5px; padding: 3px 6px; max-width: 46%; }
+
+/* Cartão de erro: copiar o diagnóstico e abrir os detalhes. */
+.msg.erro { position: relative; padding-right: 58px; }
+.erro-acoes { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; }
+.erro-acoes button.icone { width: 24px; height: 24px; border-radius: 6px; color: inherit; opacity: .65; }
+.erro-acoes button.icone:hover { opacity: 1; background: color-mix(in srgb, currentColor 12%, transparent); border-color: transparent; }
+.erro-acoes .gira .svg { transition: transform .15s ease; }
+.erro-acoes .gira.aberta .svg { transform: rotate(180deg); }
+.erro-detalhes { margin: 8px 0 0; padding: 8px 10px; border-radius: var(--r2); background: color-mix(in srgb, currentColor 8%, transparent); font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 40vh; overflow: auto; }

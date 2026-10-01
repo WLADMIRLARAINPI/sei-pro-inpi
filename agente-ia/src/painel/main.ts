@@ -46,6 +46,8 @@ import { guardarConectores, listarConectores, type Conector } from "../mcp/conec
 import { linhasDeConectores, toolsMcp } from "../mcp/tools";
 import { cartaoExterno, secaoConectores } from "./mcp-ui";
 import { textoDaIntegridade, varrer } from "../seguranca/injecao";
+import { montarDiagnostico, type Diagnostico } from "./diagnostico";
+import { cartaoDeErro } from "./erro-ui";
 import { envelopar } from "../seguranca/envelope";
 import { secaoRotinas } from "./rotinas-ui";
 import { aoAvisar, aplicarConfigDoSync, aplicarDoSync, CHAVE_MIGRADO, espelharConfig, ESPELHOS, unirNaPrimeiraVez } from "./espelho";
@@ -104,8 +106,11 @@ export interface Config {
 
 type Item =
   /** `ms` (só na resposta do agente): quanto a rodada inteira demorou, do envio à resposta pronta. */
-  | { tipo: "usuario" | "agente" | "aviso" | "erro" | "decisao"; texto: string; ms?: number }
-  | { tipo: "tool"; rotulo: string; estado: "rodando" | "ok" | "falha"; detalhe?: string; acao?: string; desfeita?: boolean };
+  | { tipo: "usuario" | "agente" | "aviso" | "decisao"; texto: string; ms?: number }
+  /** `diagnostico`: o log de auditoria que o botão de copiar leva junto. */
+  | { tipo: "erro"; texto: string; ms?: number; diagnostico?: Diagnostico }
+  /** `nome`: o nome técnico da ferramenta. O `rotulo` não serve ao diagnóstico — ele traz número de processo. */
+  | { tipo: "tool"; rotulo: string; nome?: string; estado: "rodando" | "ok" | "falha"; detalhe?: string; acao?: string; desfeita?: boolean };
 
 type ItemAgente = { tipo: "agente"; texto: string; ms?: number };
 
@@ -1724,7 +1729,8 @@ class App {
       ok = false;
       falhouExecutando = true;
       resultado = `Falhou: ${(e as Error).message}`;
-      this.adicionar({ tipo: "erro", texto: `Rotina "${rotina.nome}": ${(e as Error).message}` });
+      const recado = `Rotina "${rotina.nome}": ${(e as Error).message}`;
+      this.adicionar({ tipo: "erro", texto: recado, diagnostico: await this.diagnosticoDoErro(recado, e) });
     } finally {
       this.rotinaEmCurso = null;
       this.tetoDaRotina = null;
@@ -2442,7 +2448,7 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
       this.pensar(true);
       await promessa;
     } catch (e) {
-      this.adicionar({ tipo: "erro", texto: (e as Error).message });
+      this.adicionar({ tipo: "erro", texto: (e as Error).message, diagnostico: await this.diagnosticoDoErro((e as Error).message, e) });
     } finally {
       this.pensar(false);
       this.carimbarRodada(Date.now() - comecou);
@@ -2493,6 +2499,41 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
     return el;
   }
 
+  /**
+   * Reúne o que um chamado precisa saber sobre a falha.
+   *
+   * O que NÃO entra está documentado em `diagnostico.ts`; aqui o cuidado é um
+   * só: das ferramentas vai o NOME, nunca o rótulo — "Histórico de
+   * 99906.713-630.000032/2025-82" levaria o número do processo junto.
+   */
+  private async diagnosticoDoErro(mensagem: string, e?: unknown): Promise<Diagnostico> {
+    const bruto = e as { status?: number; corpo?: string } | undefined;
+    const ferramentas = this.transcricao
+      .filter((x): x is Extract<Item, { tipo: "tool" }> => x.tipo === "tool" && Boolean(x.nome))
+      .slice(-5)
+      .map((x) => ({ nome: x.nome as string, ok: x.estado !== "falha", ...(x.estado === "falha" && x.detalhe ? { erro: x.detalhe } : {}) }));
+    // "Failed to fetch" tanto é falta de rede quanto falta de autorização ao
+    // endereço do serviço; conferir aqui separa os dois para quem for ajudar.
+    const alvo = enderecoDoServico(this.config.servico, this.config.url);
+    const acessoAoServico = await chrome.permissions
+      .contains({ origins: [`${new URL(alvo).origin}/*`] })
+      .catch(() => undefined);
+    return montarDiagnostico({
+      mensagem,
+      ...(acessoAoServico === undefined ? {} : { acessoAoServico }),
+      ...(bruto?.status || bruto?.corpo ? { erro: { status: bruto.status, corpo: bruto.corpo } } : {}),
+      config: { servico: this.config.servico, url: this.config.url, modelo: this.config.modelo, modeloAuxiliar: this.config.modeloAuxiliar, cache: this.config.cache },
+      extensao: { nome: chrome.runtime.getManifest().name, versao: chrome.runtime.getManifest().version },
+      navegador: navigator.userAgent,
+      uso: this.uso,
+      rodadas: this.motor?.mensagens().length ?? 0,
+      ...(this.tela ? { tela: { versao: this.tela.versao, processo: this.tela.processo } } : {}),
+      ferramentas,
+      conectores: this.conectores.map((c) => ({ nome: c.nome, ativo: c.ativo })),
+      integridade: this.integridadeDaConversa.length,
+    });
+  }
+
   private desenharItem(item: Item): HTMLElement {
     if (item.tipo === "tool") {
       const acao = item.acao ? this.feitos.get(item.acao) : undefined;
@@ -2517,7 +2558,7 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
       return el;
     }
     if (item.tipo === "aviso" || item.tipo === "decisao") return h("div", { class: "msg aviso" }, icone("alerta", 14), h("span", {}, item.texto));
-    if (item.tipo === "erro") return h("div", { class: "msg erro" }, icone("alerta", 14), h("span", {}, item.texto));
+    if (item.tipo === "erro") return cartaoDeErro(item.texto, item.diagnostico);
     return h("div", { class: "msg usuario" }, item.texto);
   }
 
@@ -2623,9 +2664,9 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
         this.aoFimDoPlano?.();
         this.aoFimDoPlano = null;
       },
-      toolIniciada: (id, _nome, rotulo) => {
+      toolIniciada: (id, nome, rotulo) => {
         this.fecharBolha();
-        const item: Extract<Item, { tipo: "tool" }> = { tipo: "tool", rotulo, estado: "rodando" };
+        const item: Extract<Item, { tipo: "tool" }> = { tipo: "tool", rotulo, nome, estado: "rodando" };
         this.toolsEl.set(id, { el: this.adicionar(item), item });
       },
       toolTerminada: (id, ok, resumo) => {

@@ -313,6 +313,23 @@ function esperar(ms: number, sinal: AbortSignal): Promise<void> {
 }
 
 /** Mensagem de erro do provedor em linguagem de usuário. */
+/**
+ * Erro do serviço de IA, com o que o diagnóstico precisa.
+ *
+ * A mensagem é para o usuário; `status` e `corpo` são para quem for ajudar a
+ * resolver — e é isso que o botão de copiar do cartão de erro leva junto.
+ */
+export class ErroProvedor extends Error {
+  constructor(
+    mensagem: string,
+    readonly status: number,
+    readonly corpo: string,
+  ) {
+    super(mensagem);
+    this.name = "ErroProvedor";
+  }
+}
+
 /** O 429 é de falta de crédito (permanente) e não de pressa (passageiro)? */
 export function semCredito(corpo: string): boolean {
   return /insufficient_quota|exceeded your current quota|billing|sem cr\u00E9dito/i.test(corpo);
@@ -487,7 +504,7 @@ export function criarProvedor(o: OpcoesProvedor): Provedor {
             await esperar(esperaDaTentativa(tentativa, quando), sinal);
             continue;
           }
-          throw new Error(mensagemDeErro(r.status, texto, servico, quando));
+          throw new ErroProvedor(mensagemDeErro(r.status, texto, servico, quando), r.status, texto.slice(0, 500));
         }
         if (r.status === 400) {
           const texto = await r.text();
@@ -505,9 +522,12 @@ export function criarProvedor(o: OpcoesProvedor): Provedor {
             recusados.add(culpado);
             continue;
           }
-          throw new Error(mensagemDeErro(400, texto, servico));
+          throw new ErroProvedor(mensagemDeErro(400, texto, servico), 400, texto.slice(0, 500));
         }
-        if (!r.ok || !r.body) throw new Error(mensagemDeErro(r.status, await r.text(), servico, r.headers?.get?.("retry-after") ?? null));
+        if (!r.ok || !r.body) {
+          const texto = await r.text();
+          throw new ErroProvedor(mensagemDeErro(r.status, texto, servico, r.headers?.get?.("retry-after") ?? null), r.status, texto.slice(0, 500));
+        }
         const acc = new Acumulador();
         try {
           for await (const pedaco of lerSSE(r.body, o.silencioMaximo)) acc.somar(pedaco, aoTexto);

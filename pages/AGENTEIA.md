@@ -303,6 +303,17 @@ Quando algo é encontrado, aparece na conversa uma **verificação de integridad
 
 > O que isso **não** faz: não impede que um documento contenha instruções, e sim que elas sejam obedecidas em silêncio. A trava que impede qualquer alteração no SEI continua sendo a sua aprovação. E comando escondido dentro de uma imagem só aparece se o reconhecimento de texto estiver ligado.
 
+### Quando dá erro
+
+Todo erro na conversa traz dois botões no canto, só com ícone:
+
+* **copiar** leva a mensagem **e um diagnóstico técnico** juntos, prontos para colar num chamado, num e-mail ou numa conversa com quem mantém a extensão;
+* **a seta** abre esse diagnóstico aqui mesmo, se você quiser conferir antes o que está mandando.
+
+O diagnóstico traz o que ajuda a resolver — versão da extensão, navegador, serviço de IA e modelo, o código da resposta, o que o provedor respondeu, o tamanho da conversa, as últimas ferramentas usadas e se o navegador autorizou o acesso ao endereço do serviço.
+
+E traz só isso. **Não vão junto** a chave do serviço de IA, os tokens dos conectores, o conteúdo dos documentos, o texto da conversa, o número do processo nem a sigla da sua unidade. Pode colar sem medo.
+
 ### O que o agente não faz
 
 * **Processo sigiloso:** o agente não carrega. Estando você num processo sigiloso, ele se recusa a responder qualquer coisa;
