@@ -4,10 +4,10 @@
  * `fetch` é substituído por um que grava o que recebeu.
  */
 
-import { Acumulador, criarProvedor, enderecoDoServico, lerSSE, limparAssinaturasDeOutro, listarModelos, parametroRecusado, serveParaConversar, SERVICOS, TEMPERATURA_PADRAO } from "../src/motor/provedor";
+import { Acumulador, criarProvedor, enderecoDoServico, lerSSE, limparAssinaturasDeOutro, listarModelos, parametroRecusado, serveParaConversar, SERVICOS, TEMPERATURA_PADRAO, esperaDaTentativa, mensagemDeErro, valeRepetir } from "../src/motor/provedor";
 import { promptSistema } from "../src/motor/prompt";
 import type { ChamadaTool, PedidoLLM } from "../src/motor/tipos";
-import { checar, secao } from "./util";
+import { checar, secao, lanca } from "./util";
 
 const PEDIDO: PedidoLLM = { mensagens: [{ role: "user", content: "oi" }], tools: [] };
 
@@ -204,4 +204,95 @@ export async function verificarProvedor(): Promise<void> {
   checar("sem instrucoes, prompt nao muda", !semInstrucao.includes("preferencias-do-usuario"));
   checar("instrucoes entram delimitadas", comInstrucao.includes("<preferencias-do-usuario>") && comInstrucao.includes("Cite sempre o numero SEI."));
   checar("e vem com o lembrete de que nao furam as regras", /NÃO dispensam aprova/.test(comInstrucao));
+}
+
+/**
+ * O 429 não é um erro só.
+ *
+ * A OpenAI devolve 429 tanto para "você está indo rápido demais" quanto para
+ * "sua conta não tem crédito" — e o conselho de um é o oposto do conselho do
+ * outro. Quem está sem crédito e lê "aguarde alguns segundos e tente de novo"
+ * fica tentando para sempre, que foi o que um usuário relatou com a tela cheia
+ * do mesmo aviso.
+ */
+export async function verificarErro429(): Promise<void> {
+  secao("provedor: 429 por falta de credito");
+  {
+    const corpo = JSON.stringify({
+      error: { message: "You exceeded your current quota, please check your plan and billing details.", type: "insufficient_quota", code: "insufficient_quota" },
+    });
+    const m = mensagemDeErro(429, corpo, "openai");
+    checar("diz que e credito, nao pressa", /crédito|quota/i.test(m), m);
+    checar("e avisa que tentar de novo nao resolve", /não resolve|não adianta/i.test(m), m);
+    checar("nao manda esperar alguns segundos", !/aguarde alguns segundos/i.test(m), m);
+    checar("diz onde resolver", /billing|créditos/i.test(m), m);
+  }
+
+  secao("provedor: 429 por ritmo");
+  {
+    const corpo = JSON.stringify({ error: { message: "Rate limit reached for gpt-4o in organization org-x on tokens per min (TPM): Limit 30000", type: "tokens", code: "rate_limit_exceeded" } });
+    const m = mensagemDeErro(429, corpo, "openai");
+    checar("continua explicando o limite", /limite|ritmo/i.test(m), m);
+    checar("e explica por que acontece no agente", /ferramenta|tokens/i.test(m), m);
+    const comEspera = mensagemDeErro(429, corpo, "openai", "26");
+    checar("com retry-after, diz quantos segundos", /26 segundos/.test(comEspera), comEspera);
+  }
+
+  secao("provedor: quanto esperar antes de repetir");
+  {
+    checar("sem cabecalho, dobra a espera (1s, 2s, 4s)", esperaDaTentativa(0, null) === 1000 && esperaDaTentativa(2, null) === 4000);
+    checar("com retry-after em segundos, respeita", esperaDaTentativa(0, "26") === 26_000);
+    checar("com retry-after em data, calcula", esperaDaTentativa(0, new Date(Date.now() + 15_000).toUTCString()) >= 13_000);
+    checar("mas nao espera mais que o teto", esperaDaTentativa(0, "600") === 60_000);
+    checar("cabecalho invalido cai na espera padrao", esperaDaTentativa(1, "amanha") === 2000);
+  }
+
+  secao("provedor: o que NAO se repete");
+  {
+    const quota = JSON.stringify({ error: { type: "insufficient_quota" } });
+    checar("falta de credito nao se repete", !valeRepetir(429, quota));
+    checar("limite de ritmo se repete", valeRepetir(429, JSON.stringify({ error: { code: "rate_limit_exceeded" } })));
+    checar("erro de servidor se repete", valeRepetir(503, ""));
+    checar("chave recusada nao se repete", !valeRepetir(401, ""));
+  }
+
+  secao("provedor: o laco nao insiste quando nao adianta");
+  {
+    // Servidor que responde sempre 429 por falta de credito.
+    let tentativas = 0;
+    const buscar = (async () => {
+      tentativas += 1;
+      return {
+        ok: false,
+        status: 429,
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ error: { type: "insufficient_quota", message: "You exceeded your current quota" } }),
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const p = criarProvedor({ servico: "openai", url: "", chave: "sk-x", modelo: "gpt-4o", ajustes: {}, cache: false, fetch: buscar });
+    const e = await lanca(() => p.conversar({ mensagens: [{ role: "user", content: "oi" }], tools: [] }, new AbortController().signal, () => undefined));
+    checar("falha de primeira, sem repetir", tentativas === 1, tentativas);
+    checar("com a mensagem de credito", /cr\u00E9dito|quota/i.test(e?.message ?? ""), e?.message);
+  }
+  {
+    // Limite de ritmo: repete, respeitando o retry-after (aqui, 0 segundo).
+    let tentativas = 0;
+    const buscar = (async () => {
+      tentativas += 1;
+      if (tentativas < 3) {
+        return { ok: false, status: 429, headers: { get: (k: string) => (k.toLowerCase() === "retry-after" ? "0" : null) }, text: async () => JSON.stringify({ error: { code: "rate_limit_exceeded" } }) } as unknown as Response;
+      }
+      const corpo = 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n';
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        body: new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(corpo)); c.close(); } }),
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const p = criarProvedor({ servico: "openai", url: "", chave: "sk-x", modelo: "gpt-4o", ajustes: {}, cache: false, fetch: buscar });
+    const r = await p.conversar({ mensagens: [{ role: "user", content: "oi" }], tools: [] }, new AbortController().signal, () => undefined);
+    checar("limite de ritmo e repetido ate passar", tentativas === 3, tentativas);
+    checar("e a resposta chega", r.texto === "ok", r);
+  }
 }

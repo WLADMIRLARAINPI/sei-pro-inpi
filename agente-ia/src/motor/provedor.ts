@@ -313,7 +313,51 @@ function esperar(ms: number, sinal: AbortSignal): Promise<void> {
 }
 
 /** Mensagem de erro do provedor em linguagem de usuário. */
-export function mensagemDeErro(status: number, corpo: string, servico: Servico = "openrouter"): string {
+/** O 429 é de falta de crédito (permanente) e não de pressa (passageiro)? */
+export function semCredito(corpo: string): boolean {
+  return /insufficient_quota|exceeded your current quota|billing|sem cr\u00E9dito/i.test(corpo);
+}
+
+/**
+ * Segundos do cabeçalho `Retry-After`, que vem em segundos ou como data.
+ *
+ * Devolve `null` quando não há cabeçalho ou ele não faz sentido — aí vale a
+ * espera dobrada de sempre.
+ */
+export function segundosDoRetryAfter(valor: string | null | undefined): number | null {
+  if (!valor) return null;
+  const n = Number(valor.trim());
+  if (Number.isFinite(n) && n >= 0) return Math.round(n);
+  const quando = Date.parse(valor);
+  if (Number.isNaN(quando)) return null;
+  return Math.max(0, Math.round((quando - Date.now()) / 1000));
+}
+
+/** Teto da espera entre tentativas: além disso, é melhor devolver o erro. */
+const ESPERA_MAXIMA = 60_000;
+
+/**
+ * Quanto esperar antes de repetir o pedido.
+ *
+ * O provedor sabe melhor que nós: quando ele manda `Retry-After`, é esse o
+ * tempo. Sem ele, dobra-se a espera. Antes era sempre 1s, 2s e 4s — curto
+ * demais para um limite por MINUTO, e cada tentativa gastava mais da cota que
+ * já estava estourada.
+ */
+export function esperaDaTentativa(tentativa: number, retryAfter: string | null | undefined): number {
+  const pedido = segundosDoRetryAfter(retryAfter);
+  if (pedido !== null) return Math.min(pedido * 1000, ESPERA_MAXIMA);
+  return Math.min(1000 * 2 ** tentativa, ESPERA_MAXIMA);
+}
+
+/** Vale repetir este pedido, ou o erro é permanente? */
+export function valeRepetir(status: number, corpo: string): boolean {
+  if (status >= 500) return true;
+  if (status !== 429) return false;
+  return !semCredito(corpo);
+}
+
+export function mensagemDeErro(status: number, corpo: string, servico: Servico = "openrouter", retryAfter?: string | null): string {
   let msg = corpo;
   try {
     msg = (JSON.parse(corpo) as { error?: { message?: string } }).error?.message ?? corpo;
@@ -324,7 +368,21 @@ export function mensagemDeErro(status: number, corpo: string, servico: Servico =
   if (status === 401 || status === 403) return `A chave do ${onde} foi recusada. Confira a chave nas configura\u00E7\u00F5es do agente.`;
   if (status === 402) return `Sem cr\u00E9dito no ${onde} para este modelo. Adicione cr\u00E9ditos ou escolha um modelo mais barato.`;
   if (status === 404 && servico !== "openrouter") return `O ${onde} respondeu 404. Confira o endere\u00E7o (costuma terminar em /v1) e o nome do modelo.`;
-  if (status === 429) return "Muitas requisi\u00E7\u00F5es ao modelo agora. Aguarde alguns segundos e tente de novo.";
+  if (status === 429) {
+    // A OpenAI (e quem imita a API dela) devolve 429 para DUAS coisas opostas:
+    // conta sem crédito e pedido rápido demais. Quem está sem crédito e lê
+    // "aguarde alguns segundos" fica tentando para sempre — foi o que um
+    // usuário relatou, com a tela inteira do mesmo aviso.
+    if (semCredito(corpo)) {
+      return `A sua conta do ${onde} est\u00E1 sem cr\u00E9dito para a API (quota esgotada). Tentar de novo n\u00E3o resolve: adicione cr\u00E9ditos na conta do ${onde} ou configure outro servi\u00E7o nas configura\u00E7\u00F5es do agente.`;
+    }
+    const espera = segundosDoRetryAfter(retryAfter);
+    return (
+      `O ${onde} limitou o ritmo${espera ? `: espere ${espera} segundos` : " de uso agora"}. ` +
+      "Cada pergunta do agente leva junto o cat\u00E1logo de ferramentas do SEI (cerca de 9 mil tokens), e conta nova costuma ter limite baixo por minuto. " +
+      "Se repetir, escolha um modelo com limite maior (um \"mini\" costuma ter) ou aumente o limite da sua conta."
+    );
+  }
   // O pedido leva `data_collection: "deny"`: se todo provedor daquele modelo
   // guarda ou treina com os dados, o OpenRouter fica sem para onde rotear.
   if (/no allowed providers/i.test(msg)) {
@@ -420,9 +478,16 @@ export function criarProvedor(o: OpcoesProvedor): Provedor {
           body: montar(),
           signal: sinal,
         });
-        if ((r.status === 429 || r.status >= 500) && tentativa < 3) {
-          await esperar(1000 * 2 ** tentativa, sinal);
-          continue;
+        if (r.status === 429 || r.status >= 500) {
+          // O corpo só pode ser lido uma vez: lê-se aqui e o texto é
+          // reaproveitado tanto para decidir quanto para a mensagem final.
+          const texto = await r.text();
+          const quando = r.headers?.get?.("retry-after") ?? null;
+          if (valeRepetir(r.status, texto) && tentativa < 3) {
+            await esperar(esperaDaTentativa(tentativa, quando), sinal);
+            continue;
+          }
+          throw new Error(mensagemDeErro(r.status, texto, servico, quando));
         }
         if (r.status === 400) {
           const texto = await r.text();
@@ -442,7 +507,7 @@ export function criarProvedor(o: OpcoesProvedor): Provedor {
           }
           throw new Error(mensagemDeErro(400, texto, servico));
         }
-        if (!r.ok || !r.body) throw new Error(mensagemDeErro(r.status, await r.text(), servico));
+        if (!r.ok || !r.body) throw new Error(mensagemDeErro(r.status, await r.text(), servico, r.headers?.get?.("retry-after") ?? null));
         const acc = new Acumulador();
         try {
           for await (const pedaco of lerSSE(r.body, o.silencioMaximo)) acc.somar(pedaco, aoTexto);
