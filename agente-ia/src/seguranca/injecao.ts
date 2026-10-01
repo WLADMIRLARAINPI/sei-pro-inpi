@@ -155,6 +155,34 @@ export function varrer(texto: string, o: OpcoesVarredura = {}): Varredura {
   return { texto: saida, achados };
 }
 
+/**
+ * Varre os campos de texto livre de um resultado do SEI.
+ *
+ * Especificação do processo, anotação, descrição de andamento e nome de
+ * interessado são digitados por gente — inclusive por quem protocola de fora.
+ * São curtos e não têm envelope (não são documento), mas passam pela mesma
+ * marcação, para que uma ordem escrita ali também chegue como dado.
+ *
+ * Só texto é tocado: número, data e booleano saem como entraram.
+ */
+export function varrerCamposLivres<T>(valor: T): { valor: T; achados: Achado[] } {
+  const achados: Achado[] = [];
+  const andar = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      // Campos curtos demais não têm como esconder instrução; evitar varrê-los
+      // poupa trabalho em listas grandes de processos.
+      if (v.length < 12) return v;
+      const r = varrer(v);
+      achados.push(...r.achados);
+      return r.texto;
+    }
+    if (Array.isArray(v)) return v.map(andar);
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, andar(x)]));
+    return v;
+  };
+  return { valor: andar(valor) as T, achados };
+}
+
 /** Resumo de uma leitura, para entrar no resultado da ferramenta. */
 export function resumoDosAchados(achados: Achado[]): string {
   if (!achados.length) return "";

@@ -16,7 +16,7 @@ import { definirTool, type ContextoTool, type DefTool } from "../motor/tools";
 import type { PreviaItem } from "../motor/tipos";
 import { extrairTextoPdf } from "../painel/pdf";
 import { envelopar } from "../seguranca/envelope";
-import { resumoDosAchados, varrer } from "../seguranca/injecao";
+import { resumoDosAchados, varrer, varrerCamposLivres } from "../seguranca/injecao";
 
 type Args = Record<string, unknown>;
 
@@ -339,7 +339,12 @@ export const TOOLS_SEI: DefTool[] = [
     executar: async (a, ctx) => {
       const p = await ctx.sei<{ interessados: string[] }>("processo.consultar", a);
       ctx.pessoasVistas(p.interessados ?? []);
-      return p;
+      // Especificação, interessado e anotação são texto livre digitado por
+      // gente — inclusive por quem protocola de fora. Mesma marcação do
+      // conteúdo dos documentos (ver seguranca/injecao.ts).
+      const varrido = varrerCamposLivres(p);
+      if (varrido.achados.length) ctx.registrarAchados(String(a.processo), varrido.achados);
+      return varrido.valor;
     },
   }),
 
