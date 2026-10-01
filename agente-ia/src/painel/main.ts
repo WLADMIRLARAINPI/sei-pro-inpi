@@ -30,6 +30,7 @@ import { anotar, blocoDeMemoria, guardarMemoria, listarMemoria, MAX_TEXTO, type 
 import { descreverFrequencia, DIAS, guardarRotinas, listarRotinas, vencidas, type Rotina } from "./rotinas";
 import { guardarConectores, listarConectores, type Conector } from "../mcp/conectores";
 import { linhasDeConectores, toolsMcp } from "../mcp/tools";
+import { cartaoExterno, secaoConectores } from "./mcp-ui";
 import {
   baixarColecao,
   baixarSkillSeMudou,
@@ -1341,6 +1342,17 @@ class App {
      * usando?") sem precisar abrir nada. O `name` faz o próprio navegador
      * manter um aberto por vez.
      */
+    const conectoresUI = secaoConectores({
+      conectores: () => this.conectores,
+      definir: async (lista) => {
+        this.conectores = lista;
+        await guardarConectores(lista);
+        atualizarResumos();
+      },
+      abrirModal: (op) => this.abrirModal(op),
+      aviso: (texto) => this.adicionar({ tipo: "aviso", texto }),
+    });
+
     const resumos = {
       ia: h("small", {}),
       sabe: h("small", {}),
@@ -1369,7 +1381,8 @@ class App {
       const colecoes = this.colecoes.length ? `, ${qtd2(this.colecoes.length, "cole\u00E7\u00E3o", "cole\u00E7\u00F5es")}` : "";
       resumos.sabe.textContent = `${qtd2(this.skills.length, "skill", "skills")}${colecoes} \u00B7 mem\u00F3ria ${usarMemoria.checked ? `com ${qtd2(this.memoria.length, "lembran\u00E7a", "lembran\u00E7as")}` : "desligada"}`;
       const ativas = this.regras.filter((r) => r.ativa).length;
-      resumos.pode.textContent = `${ativas ? qtd2(ativas, "regra ativa", "regras ativas") : "sem regras"} \u00B7 ${nomes.checked ? "nomes mascarados" : "nomes vis\u00EDveis"}`;
+      const ligados = this.conectores.filter((c) => c.ativo).length;
+      resumos.pode.textContent = `${ativas ? qtd2(ativas, "regra ativa", "regras ativas") : "sem regras"} \u00B7 ${ligados ? qtd2(ligados, "conector", "conectores") : "sem conector"} \u00B7 ${nomes.checked ? "nomes mascarados" : "nomes vis\u00EDveis"}`;
       const teto = [
         Number(limiteConversa.value) > 0 ? `R$ ${limiteConversa.value}/conversa` : "",
         Number(limiteDia.value) > 0 ? `R$ ${limiteDia.value}/dia` : "",
@@ -1427,6 +1440,7 @@ class App {
           "O que o agente pode",
           resumos.pode,
           secaoRegras,
+          conectoresUI.elemento,
           h(
             "div",
             { class: "campo" },
@@ -2386,6 +2400,7 @@ Voc\u00EA \u00E9 um AUXILIAR: recebeu uma tarefa de leitura de outro agente e n\
 
   private interfaceMotor(): InterfaceMotor {
     return {
+      aprovarExterno: (p) => cartaoExterno(p, (op) => this.abrirModal(op)),
       texto: (delta) => {
         if (!this.bolhaAtual) {
           this.pensar(false);

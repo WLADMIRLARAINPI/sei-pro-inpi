@@ -604,3 +604,8 @@ dialog.modal[open]::backdrop { background: rgba(12, 16, 24, .42); backdrop-filte
 .cartao.fluxo .badge { background: var(--atencao-bg); color: var(--atencao); }
 .cartao.fluxo .acoes button { flex: 0 1 auto; font-size: 11.5px; padding: 5px 9px; }
 .detalhes-fluxo { color: var(--ink-2); margin-top: var(--e2); }
+
+/* Conectores MCP: o que vai ser enviado, no cartão de autorização. */
+.args-externo { white-space: pre-wrap; word-break: break-word; max-height: 40vh; overflow: auto; font-size: 12px; background: var(--superficie-2); border: 1px solid var(--linha); border-radius: var(--r2); padding: 8px 10px; margin: 0; }
+.skill.conector .skill-texto { gap: 3px 8px; }
+.skill select { font-size: 11.5px; padding: 3px 6px; max-width: 46%; }
