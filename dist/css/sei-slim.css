@@ -96,9 +96,18 @@ i.fa-laranjaColor {
     background: none !important;
     width: 95% !important;
 }
+/* A barra sai do fluxo e fica transparente, com 95% da largura: os campos sobem para baixo dela.
+   No "Registrar Documento Externo" o primeiro campo e o Tipo do Documento, e o clique caia na
+   barra em vez de abrir a lista (o Chosen escapava por ser position: relative). So os botoes
+   recebem clique; o resto da barra deixa passar para o campo que esta embaixo. */
 .seiSlim.seiSlim_view form .barraBotoesSEI,
 .seiSlim.seiSlim_view form .infraBarraComandos {
     position: absolute;
+    pointer-events: none;
+}
+.seiSlim.seiSlim_view form .barraBotoesSEI > *,
+.seiSlim.seiSlim_view form .infraBarraComandos > * {
+    pointer-events: auto;
 }
 .seiSlim.seiSlim_view form .infraAreaDados, 
 .seiSlim.seiSlim_view form .infraFieldset, 
